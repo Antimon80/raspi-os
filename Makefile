@@ -9,7 +9,7 @@ LD      := aarch64-none-elf-ld
 OBJCOPY := aarch64-none-elf-objcopy
 
 CPU     := cortex-a72
-CFLAGS  := -Wall -O2 -ffreestanding -nostdinc -nostdlib -nostartfiles -mstrict-align -mcpu=$(CPU) -I$(INC_DIR)
+CFLAGS  := -Wall -O2 -ffreestanding -nostdlib -nostartfiles -mstrict-align -mcpu=$(CPU) -I$(INC_DIR)
 ASFLAGS := $(CFLAGS)
 LDFLAGS := -T link.ld -nostdlib
 
