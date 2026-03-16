@@ -1,0 +1,32 @@
+\documentclass{article}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\title{Operating Systems: Project}
+\author{Andrea Seehuber, Luca Fässler}
+\date{March 2026}
+
+\begin{document}
+
+\maketitle
+
+\appendix
+
+\section*{Raspberry Pi OS Development}
+
+\begin{center}
+  \textit{DESCRIPTION}
+\end{center}
+This project involves building a bare metal operating system kernel from scratch on a Raspberry Pi 4 Model B (Cortex-A72, 4 GB RAM), without any underlying operating system or standard libraries.
+\\\\
+The entire software stack — from the first boot instruction to peripheral drivers and task scheduling — will be written in C and AArch64 assembly.
+\\\\
+The system will interface with a Raspberry Pi Sense HAT to read environmental sensor data (temperature, humidity, pressure). Sensor readings will be displayed in two ways: on an external HDMI monitor via a custom framebuffer driver, and on the Sense HAT's 8x8 RGB LED matrix as a color-coded status indicator. The Sense HAT joystick will be used for user interaction, allowing the active sensor view on the HDMI display to be switched and providing a way to trigger a controlled system reboot.
+\\\\
+A UART serial adapter connected to the Pi's GPIO pins will serve as the primary debug interface during development.
+\\\\
+On the software side, the kernel will implement interrupt handling, cooperative and preemptive context switching between tasks, and synchronization primitives such as spinlocks and semaphores. Drivers will be written for UART (PL011), I2C (for Sense HAT communication), GPIO (for joystick interrupts), and the VideoCore mailbox interface (for HDMI framebuffer setup).
+\\\\
+The project aims to provide hands-on experience with the full hardware-software stack on a real ARM platform — covering everything from bare metal boot sequences and exception handling to concurrent task management and hardware-driven I/O.
+
+\end{document}
