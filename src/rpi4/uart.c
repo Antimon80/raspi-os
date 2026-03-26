@@ -59,6 +59,7 @@ void uart_init(void)
     gpio_use_as_alt5(15); // RX
 
     mmio_write(AUX_MU_CNTL_REG, 3); // enable transmitter and receiver
+    mmio_write(AUX_MU_IER_REG, 1);  // enable RX interrupt (bit 0)
 }
 
 /*
