@@ -13,7 +13,7 @@ typedef enum {
 
 typedef enum {
     GPIO_PULL_NONE = 0,
-    GPIPO_PULL_UP = 1,
+    GPIO_PULL_UP = 1,
     GPIO_PULL_DOWN = 2
 } gpio_pull_t;
 
