@@ -1,10 +1,65 @@
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "kernel/irq.h"
+#include "kernel/task.h"
+#include "kernel/scheduler.h"
+#include "kernel/panic.h"
 
 #define PERIPHERAL_BASE ((uintptr_t)0xFE000000)
 #define IRQ_ENABLE1 (PERIPHERAL_BASE + 0xB210)
+#define IRQ_AUX (1 << 29)
 
+/*
+ * Simple UART echo task.
+ *
+ * Reads characters that were previously placed into the software
+ * receive buffer by the UART interrupt handler and echoes them
+ * back to the terminal.
+ */
+static void uart_echo_task(void)
+{
+    while (1)
+    {
+        char c;
+
+        if (uart_read_char(&c))
+        {
+            uart_putc(c);
+        }
+
+        //  cooperative scheduling: explicitly give up the CPU
+        scheduler_yield();
+    }
+}
+
+/*
+ * Simple demo task.
+ *
+ * Periodically prints a message so that task switching becomes
+ * visible on the UART output.
+ */
+static void demo_task(void)
+{
+    while (1)
+    {
+        uart_puts("[demo]\n");
+
+        //  small delay to slow down the output
+        for (volatile uint64_t i = 0; i < 1000000; i++)
+        {
+        }
+
+        scheduler_yield();
+    }
+}
+
+/*
+ * Kernel entry point.
+ *
+ * Initializes UART and interrupts, sets up the task system and
+ * scheduler, creates the first demo tasks, and then starts the
+ * scheduler.
+ */
 void main(void)
 {
     uart_init();
@@ -12,17 +67,30 @@ void main(void)
     uart_puts("UART OK\n");
 
     irq_init();
-    mmio_write(IRQ_ENABLE1, (1 << 29));
+    mmio_write(IRQ_ENABLE1, IRQ_AUX);
     irq_enable();
 
-    uart_puts("IRQ ready - type something\n");
+    uart_puts("IRQ ready\n");
 
+    task_init_system();
+    scheduler_init();
+
+    if (task_create(uart_echo_task) < 0)
+    {
+        kernel_panic("Failed to create uart_echo_task\n");
+    }
+
+    if (task_create(demo_task) < 0)
+    {
+        kernel_panic("Failed to create demo_task\n");
+    }
+
+    uart_puts("Starting scheduler...\n");
+    scheduler_start();
+
+    //  the scheduler should never return here
     while (1)
     {
-        char c;
-        if (uart_read_char(&c))
-        {
-            uart_putc(c);
-        }
+        asm volatile("wfe");
     }
 }
