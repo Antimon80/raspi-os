@@ -5,6 +5,7 @@
 #include "kernel/scheduler.h"
 #include "kernel/panic.h"
 #include "kernel/shell.h"
+#include "kernel/timer.h"
 
 /*
  * Kernel entry point.
@@ -15,12 +16,6 @@ void main(void)
     uart_puts("Boot OK\n");
     uart_puts("UART OK\n");
 
-    irq_init();
-    gic_init();
-    irq_enable();
-
-    uart_puts("IRQ ready\n");
-
     task_init_system();
     scheduler_init();
 
@@ -29,7 +24,15 @@ void main(void)
         kernel_panic("Failed to create shell task\n");
     }
 
+    irq_init();
+    gic_init();
+    timer_init(100); // 100 Hz = 10 ms per tick
+    irq_enable();
+
+    uart_puts("IRQ ready\n");
+    uart_puts("Timer ready\n");
     uart_puts("Starting scheduler...\n");
+
     scheduler_start();
 
     while (1)

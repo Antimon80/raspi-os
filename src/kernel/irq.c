@@ -1,4 +1,5 @@
 #include "kernel/irq.h"
+#include "kernel/timer.h"
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 
@@ -11,16 +12,16 @@
 /*
  * AUX (Mini UART) registers
  */
-#define AUX_IRQ (AUX_BASE + 0x00)          // AUX interrupt status
-#define AUX_MU_IO_REG (AUX_BASE + 0x40)    // data register
-#define AUX_MU_LSR_REG (AUX_BASE + 0x54)   // line status (bit 0 = data ready)
+#define AUX_IRQ (AUX_BASE + 0x00)        // AUX interrupt status
+#define AUX_MU_IO_REG (AUX_BASE + 0x40)  // data register
+#define AUX_MU_LSR_REG (AUX_BASE + 0x54) // line status (bit 0 = data ready)
 
 /*
  * GIC-400 base addresses (BCM2711)
  */
 #define GIC_BASE ((uintptr_t)0xFF840000)
-#define GICD_BASE (GIC_BASE + 0x1000)      // distributor
-#define GICC_BASE (GIC_BASE + 0x2000)      // CPU interface
+#define GICD_BASE (GIC_BASE + 0x1000) // distributor
+#define GICC_BASE (GIC_BASE + 0x2000) // CPU interface
 
 /*
  * GIC distributor registers
@@ -33,16 +34,16 @@
  * Priority and target registers are byte-addressed,
  * but accessed as 32-bit words → align to 4 bytes
  */
-#define GICD_IPRIORITYR(n)  (GICD_BASE + 0x400 + (((n) / 4) * 4))
-#define GICD_ITARGETSR(n)   (GICD_BASE + 0x800 + (((n) / 4) * 4))
+#define GICD_IPRIORITYR(n) (GICD_BASE + 0x400 + (((n) / 4) * 4))
+#define GICD_ITARGETSR(n) (GICD_BASE + 0x800 + (((n) / 4) * 4))
 
 /*
  * GIC CPU interface registers
  */
 #define GICC_CTLR (GICC_BASE + 0x000)
 #define GICC_PMR (GICC_BASE + 0x004)
-#define GICC_IAR (GICC_BASE + 0x00C)   // interrupt acknowledge
-#define GICC_EOIR (GICC_BASE + 0x010)  // end of interrupt
+#define GICC_IAR (GICC_BASE + 0x00C)  // interrupt acknowledge
+#define GICC_EOIR (GICC_BASE + 0x010) // end of interrupt
 
 /*
  * UART1 (Mini UART) interrupt:
@@ -54,6 +55,8 @@
  * Simple ring buffer for received UART characters
  */
 #define UART_BUFFER_SIZE 128
+
+#define TIMER_GIC_INTID 30
 
 static volatile char uart_buffer[UART_BUFFER_SIZE];
 static volatile uint32_t uart_head = 0;
@@ -135,6 +138,24 @@ void gic_init(void)
     // enable interrupt
     mmio_write(GICD_ISENABLER(UART1_GIC_INTID / 32), bit);
 
+    // generic timer interrupt setup (PPI 30)
+    bit = 1u << (TIMER_GIC_INTID % 32);
+    shift = (TIMER_GIC_INTID % 4) * 8;
+
+    // put timer interrupt into Group 1
+    reg = mmio_read(GICD_IGROUPR(TIMER_GIC_INTID / 32));
+    reg |= bit;
+    mmio_write(GICD_IGROUPR(TIMER_GIC_INTID / 32), reg);
+
+    // set timer interrupt priority
+    reg = mmio_read(GICD_IPRIORITYR(TIMER_GIC_INTID));
+    reg &= ~(0xFFu << shift);
+    reg |= (0x88u << shift);
+    mmio_write(GICD_IPRIORITYR(TIMER_GIC_INTID), reg);
+
+    // enable timer interrupt
+    mmio_write(GICD_ISENABLER(TIMER_GIC_INTID / 32), bit);
+
     // allow all priorities
     mmio_write(GICC_PMR, 0xFF);
 
@@ -158,6 +179,10 @@ void handle_irq(void)
         {
             uart_irq_handler();
         }
+    }
+    else if (intid == TIMER_GIC_INTID)
+    {
+        timer_handle_tick();
     }
 
     // signal end of interrupt to GIC

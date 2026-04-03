@@ -66,7 +66,7 @@ static int str_starts_with(const char *str, const char *prefix)
 }
 
 /*
- * Pase an unsigned decimal integer.
+ * Parse an unsigned decimal integer.
  *
  * Returns 0 on success, -1 on failure.
  */

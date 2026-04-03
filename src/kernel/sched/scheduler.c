@@ -1,6 +1,7 @@
 #include "kernel/scheduler.h"
 #include "kernel/task.h"
 #include "kernel/panic.h"
+#include "kernel/timer.h"
 #include "rpi4/uart.h"
 
 /*
@@ -15,10 +16,9 @@ extern void context_switch(uint64_t **old_sp, uint64_t *new_sp);
 /* ID of the currently running task, or -1 if none is active yet. */
 static int current_task_id = -1;
 
-/* ID of the currently running task, or -1 if none is active yet. */
+/* ID of the idle task created during scheduler initialization. */
 static int idle_task_id = -1;
 
-/* ID of the idle task created during scheduler initialization. */
 static int scheduler_pick_next(void);
 static void scheduler_task_exit(void);
 static void idle_task(void);
@@ -256,6 +256,40 @@ static void scheduler_task_exit(void)
     scheduler_yield();
 
     kernel_panic("scheduler_task_exit: returned unexpectedly\n");
+}
+
+/*
+ * Put the current task to sleep for a given number of ticks.
+ *
+ * The task is marked as SLEEPING and its wakeup_tick is set
+ * relative to the current system tick. It will not be scheduled
+ * again until the timer interrupt marks it as READY.
+ *
+ * The function then yields the CPU so another runnable task
+ * can be scheduled.
+ *
+ * Panics if no valid current task exists.
+ */
+void task_sleep(uint64_t ticks)
+{
+    int id = current_task_id;
+
+    if (id < 0)
+    {
+        kernel_panic("task_sleep: invalid current task\n");
+    }
+
+    task_t *task = task_get(id);
+
+    if (!task)
+    {
+        kernel_panic("task_sleep: task lookup failed\n");
+    }
+
+    task->wakeup_tick = timer_get_ticks() + ticks;
+    task->state = SLEEPING;
+
+    scheduler_yield();
 }
 
 /*
