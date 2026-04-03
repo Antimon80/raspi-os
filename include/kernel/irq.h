@@ -11,7 +11,9 @@ void irq_init(void);
 void irq_enable(void);
 void irq_disable(void);
 void irq_barrier(void);
-void irq_enable_aux(void);
+
+/* GIC setup for BCM2711 */
+void gic_init(void);
 
 /*
  * Public UART IRQ buffer API
@@ -21,8 +23,6 @@ int uart_read_char(char *c);
 
 /*
  * Internal IRQ entry points
- * Called from assembly exception/IRQ stubs.
- * Not intended for normal C callers.
  */
 void handle_irq(void);
 void exception_debug(void);

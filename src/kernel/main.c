@@ -5,10 +5,6 @@
 #include "kernel/scheduler.h"
 #include "kernel/panic.h"
 
-#define PERIPHERAL_BASE ((uintptr_t)0xFE000000)
-#define IRQ_ENABLE1 (PERIPHERAL_BASE + 0xB210)
-#define IRQ_AUX (1 << 29)
-
 /*
  * Simple UART echo task.
  *
@@ -55,10 +51,6 @@ static void demo_task(void)
 
 /*
  * Kernel entry point.
- *
- * Initializes UART and interrupts, sets up the task system and
- * scheduler, creates the first demo tasks, and then starts the
- * scheduler.
  */
 void main(void)
 {
@@ -67,7 +59,7 @@ void main(void)
     uart_puts("UART OK\n");
 
     irq_init();
-    mmio_write(IRQ_ENABLE1, IRQ_AUX);
+    gic_init();
     irq_enable();
 
     uart_puts("IRQ ready\n");
@@ -75,20 +67,19 @@ void main(void)
     task_init_system();
     scheduler_init();
 
-    if (task_create(uart_echo_task) < 0)
-    {
-        kernel_panic("Failed to create uart_echo_task\n");
-    }
-
     if (task_create(demo_task) < 0)
     {
         kernel_panic("Failed to create demo_task\n");
     }
 
+    if (task_create(uart_echo_task) < 0)
+    {
+        kernel_panic("Failed to create uart_echo_task\n");
+    }
+
     uart_puts("Starting scheduler...\n");
     scheduler_start();
 
-    //  the scheduler should never return here
     while (1)
     {
         asm volatile("wfe");

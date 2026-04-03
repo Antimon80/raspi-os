@@ -50,7 +50,6 @@ void uart_init(void)
     mmio_write(AUX_MU_CNTL_REG, 0);                   // disable TX/RX during configuration
     mmio_write(AUX_MU_LCR_REG, 3);                    // 8-bit data mode
     mmio_write(AUX_MU_MCR_REG, 0);                    // no modem control
-    mmio_write(AUX_MU_IER_REG, 0);                    // ensure interrupts disabled
     mmio_write(AUX_MU_IIR_REG, 0xC6);                 // disable FIFOx and interrupts
     mmio_write(AUX_MU_BAUD_REG, AUX_MU_BAUD(115200)); // set baud rate
 

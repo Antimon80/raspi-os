@@ -17,7 +17,8 @@ context_switch:
     stp x29, x30, [sp, #-16]!
 
     /* Store the resulting stack pointer into *old_sp. */
-    str sp, [x0]
+    mov x2, sp
+    str x2, [x0]
 
     /* Switch to the new task stack. */
     mov sp, x1
