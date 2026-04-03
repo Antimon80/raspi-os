@@ -4,50 +4,7 @@
 #include "kernel/task.h"
 #include "kernel/scheduler.h"
 #include "kernel/panic.h"
-
-/*
- * Simple UART echo task.
- *
- * Reads characters that were previously placed into the software
- * receive buffer by the UART interrupt handler and echoes them
- * back to the terminal.
- */
-static void uart_echo_task(void)
-{
-    while (1)
-    {
-        char c;
-
-        if (uart_read_char(&c))
-        {
-            uart_putc(c);
-        }
-
-        //  cooperative scheduling: explicitly give up the CPU
-        scheduler_yield();
-    }
-}
-
-/*
- * Simple demo task.
- *
- * Periodically prints a message so that task switching becomes
- * visible on the UART output.
- */
-static void demo_task(void)
-{
-    while (1)
-    {
-        uart_puts("[demo]\n");
-
-        //  small delay to slow down the output
-        for (volatile uint64_t i = 0; i < 1000000; i++)
-        {
-        }
-
-        scheduler_yield();
-    }
-}
+#include "kernel/shell.h"
 
 /*
  * Kernel entry point.
@@ -67,14 +24,9 @@ void main(void)
     task_init_system();
     scheduler_init();
 
-    if (task_create(demo_task) < 0)
+    if (task_create(shell_task, "shell") < 0)
     {
-        kernel_panic("Failed to create demo_task\n");
-    }
-
-    if (task_create(uart_echo_task) < 0)
-    {
-        kernel_panic("Failed to create uart_echo_task\n");
+        kernel_panic("Failed to create shell task\n");
     }
 
     uart_puts("Starting scheduler...\n");

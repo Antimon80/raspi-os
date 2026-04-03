@@ -5,13 +5,15 @@
 
 #define MAX_TASKS 8
 #define TASK_STACK_SIZE 4096
+#define TASK_NAME_LEN 16
 
 typedef enum {
     UNUSED = 0,
     READY,
     RUNNING,
     BLOCKED,
-    SLEEPING
+    SLEEPING,
+    DYING
 } task_state_t;
 
 typedef struct task {
@@ -20,11 +22,15 @@ typedef struct task {
     uint64_t *sp;
     void(*entry)(void);
     uint64_t wakeup_tick;
+    char name[TASK_NAME_LEN];
     uint8_t stack[TASK_STACK_SIZE];
 } task_t;
 
 void task_init_system(void);
-int task_create(void (*entry)(void));
 task_t *task_get(int id);
+
+int task_create(void (*entry)(void), const char *name);
+int task_request_stop(int id);
+void task_reap_dying(int exclude_id);
 
 #endif

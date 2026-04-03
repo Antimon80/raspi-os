@@ -11,6 +11,46 @@ extern void task_bootstrap(void);
 /* Global task table (statically allocated). */
 static task_t tasks[MAX_TASKS];
 
+/* Copy a zero-terminated string into a fixed-size buffer.*/
+static void str_copy(char *dst, const char *src, int max_len)
+{
+    int i = 0;
+
+    if (!dst || max_len < 0)
+    {
+        return;
+    }
+
+    if (!src)
+    {
+        dst[0] = '\0';
+        return;
+    }
+
+    while (src[i] != '\0' && i < (max_len - 1))
+    {
+        dst[i] = src[i];
+        i++;
+    }
+
+    dst[i] = '\0';
+}
+
+/* Reset a task slot to the UNUSED state. */
+static void task_clear(task_t *task)
+{
+    if (!task)
+    {
+        return;
+    }
+
+    task->state = UNUSED;
+    task->sp = 0;
+    task->entry = 0;
+    task->wakeup_tick = 0;
+    task->name[0] = '\0';
+}
+
 /*
  * Initialize all task slots.
  *
@@ -22,10 +62,7 @@ void task_init_system(void)
     for (int i = 0; i < MAX_TASKS; i++)
     {
         tasks[i].id = i;
-        tasks[i].state = UNUSED;
-        tasks[i].sp = 0;
-        tasks[i].entry = 0;
-        tasks[i].wakeup_tick = 0;
+        task_clear(&tasks[i]);
     }
 }
 
@@ -55,7 +92,7 @@ task_t *task_get(int id)
  *   task ID on success
  *  -1 if no free slot is available or entry is NULL
  */
-int task_create(void (*entry)(void))
+int task_create(void (*entry)(void), const char *name)
 {
     if (!entry)
     {
@@ -71,6 +108,7 @@ int task_create(void (*entry)(void))
             task->entry = entry;
             task->state = READY;
             task->wakeup_tick = 0;
+            str_copy(task->name, name, TASK_NAME_LEN);
 
             // compute top of the task stack
             uint64_t *stack_top = (uint64_t *)(task->stack + TASK_STACK_SIZE);
@@ -106,4 +144,53 @@ int task_create(void (*entry)(void))
     }
 
     return -1;
+}
+
+/*
+ * Request termination of a task.
+ *
+ * The task is marked as DYING. It will no longer be scheduled and
+ * will be cleaned up later at a scheduler-safe point.
+ *
+ * Returns 0 on success, -1 on failure.
+ */
+int task_request_stop(int id)
+{
+    task_t *task = task_get(id);
+
+    if (!task)
+    {
+        return -1;
+    }
+
+    if (task->state == UNUSED || task->state == DYING)
+    {
+        return -1;
+    }
+
+    task->state = DYING;
+    return 0;
+}
+
+/*
+ * Free all task slots that are marked as DYING.
+ *
+ * This must only be called from the scheduler at a safe point.
+ */
+void task_reap_dying(int exclude_id)
+{
+    for (int i = 0; i < MAX_TASKS; i++)
+    {
+        if (i == exclude_id)
+        {
+            continue;
+        }
+
+        task_t *task = &tasks[i];
+
+        if (task->state == DYING)
+        {
+            task_clear(task);
+        }
+    }
 }

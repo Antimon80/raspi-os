@@ -82,7 +82,7 @@ static void idle_task(void)
 void scheduler_init(void)
 {
     current_task_id = -1;
-    idle_task_id = task_create(idle_task);
+    idle_task_id = task_create(idle_task, "idle");
 
     if (idle_task_id < 0)
     {
@@ -151,6 +151,11 @@ static int scheduler_pick_next(void)
     return -1;
 }
 
+static void scheduler_reap_safe(void)
+{
+    task_reap_dying(current_task_id);
+}
+
 /*
  * Cooperative yield.
  *
@@ -160,24 +165,6 @@ static int scheduler_pick_next(void)
 void scheduler_yield(void)
 {
     int prev_id = current_task_id;
-    int next_id = scheduler_pick_next();
-
-    if (next_id < 0)
-    {
-        kernel_panic("scheduler_yield: no runnable task\n");
-    }
-
-    if (prev_id == next_id)
-    {
-        return;
-    }
-
-    task_t *next = task_get(next_id);
-
-    if (!next)
-    {
-        kernel_panic("scheduler_yield: next task lookup failed\n");
-    }
 
     if (prev_id >= 0)
     {
@@ -188,26 +175,58 @@ void scheduler_yield(void)
             kernel_panic("scheduler_yield: previous task lookup failed\n");
         }
 
-        //  a running task becomes ready again before switching away
-        //  from it, unless it has already changed its own state
         if (prev->state == RUNNING)
         {
             prev->state = READY;
         }
+    }
 
-        next->state = RUNNING;
-        current_task_id = next_id;
+    scheduler_reap_safe();
+
+    int next_id = scheduler_pick_next();
+
+    if (next_id < 0)
+    {
+        kernel_panic("scheduler_yield: no runnable task\n");
+    }
+
+    if (prev_id == next_id)
+    {
+        task_t *same = task_get(next_id);
+
+        if (!same)
+        {
+            kernel_panic("scheduler_yield: same task lookup failed\n");
+        }
+
+        same->state = RUNNING;
+        return;
+    }
+
+    task_t *next = task_get(next_id);
+
+    if (!next)
+    {
+        kernel_panic("scheduler_yield: next task lookup failed\n");
+    }
+
+    next->state = RUNNING;
+    current_task_id = next_id;
+
+    if (prev_id >= 0)
+    {
+        task_t *prev = task_get(prev_id);
+
+        if (!prev)
+        {
+            kernel_panic("scheduler_yield: previous task lookup failed\n");
+        }
 
         context_switch(&prev->sp, next->sp);
     }
     else
     {
-        //  first scheduler start:
-        //  there is no previous task yet, so the old pointer
-        //  does not need to be preserved
         uint64_t *unused_old_sp = 0;
-        next->state = RUNNING;
-        current_task_id = next_id;
         context_switch(&unused_old_sp, next->sp);
     }
 }
@@ -233,18 +252,10 @@ static void scheduler_task_exit(void)
         kernel_panic("scheduler_task_exit: task lookup failed\n");
     }
 
-    task->state = UNUSED;
-    task->sp = 0;
-    task->entry = 0;
-    task->wakeup_tick = 0;
-
-    current_task_id = -1;
-
+    task->state = DYING;
     scheduler_yield();
 
-    while (1)
-    {
-    }
+    kernel_panic("scheduler_task_exit: returned unexpectedly\n");
 }
 
 /*
