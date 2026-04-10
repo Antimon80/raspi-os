@@ -9,6 +9,7 @@
 #define AUX_BASE (PERIPHERAL_BASE + 0x215000)
 
 /* Mini UART registers */
+#define AUX_IRQ (AUX_BASE + 0x00)         // AUX interrupt status
 #define AUX_ENABLES (AUX_BASE + 0x04)     // Enable auxiliary peripherals
 #define AUX_MU_IO_REG (AUX_BASE + 0x40)   // Data register (read/write characters)
 #define AUX_MU_IER_REG (AUX_BASE + 0x44)  // Interrupt enable register
@@ -26,12 +27,30 @@
 #define AUX_MU_BAUD(baud) ((AUX_UART_CLOCK / ((baud) * 8)) - 1)
 
 /*
+ * Simple ring buffer for received UART characters.
+ * Characters are written by the interrupt handler and read by normal code.
+ */
+#define UART_BUFFER_SIZE 128
+
+static volatile char uart_buffer[UART_BUFFER_SIZE];
+static volatile unsigned int uart_head = 0;
+static volatile unsigned int uart_tail = 0;
+/*
  * Check whether the UART transmit FIFO can accept a new byte.
  * Bit 5 of the Line Status Register indicates TX readiness.
  */
 static uint32_t uart_can_write(void)
 {
     return mmio_read(AUX_MU_LSR_REG) & 0x20;
+}
+
+/*
+ * Check whether at least one received byte is available.
+ * LSR bit 0 = data ready.
+ */
+static unsigned int uart_data_ready(void)
+{
+    return mmio_read(AUX_MU_LSR_REG) & 0x01;
 }
 
 /*
@@ -42,6 +61,7 @@ static uint32_t uart_can_write(void)
  *  - configure UART registers
  *  - configure GPIO14/15 for UART function
  *  - enable transmitter and receiver
+ *  - enable receive interrupt
  */
 void uart_init(void)
 {
@@ -87,5 +107,56 @@ void uart_puts(const char *s)
             uart_putc('\r');
         }
         uart_putc(*s++);
+    }
+}
+
+/*
+ * Read one character from the software RX buffer.
+ * Returns 1 on success, 0 if no character is available.
+ */
+int uart_read_char(char *c)
+{
+    if (uart_head == uart_tail)
+    {
+        return 0;
+    }
+
+    *c = uart_buffer[uart_tail];
+    uart_tail = (uart_tail + 1) % UART_BUFFER_SIZE;
+    return 1;
+}
+
+/*
+ * UART interrupt handler.
+ *
+ * Drains all currently available received characters from the hardware
+ * FIFO and stores them in the software ring buffer.
+ *
+ * If the buffer is full, incoming characters are dropped.
+ */
+void uart_handle_irq(void)
+{
+    // AUX bit 0 indicates a Mini UART interrupt is pending.
+    // While it is pendig, drain all available RX bytes.
+    while (mmio_read(AUX_IRQ) & 0x1)
+    {
+        while (uart_data_ready())
+        {
+            char c = (char)mmio_read(AUX_MU_IO_REG);
+            unsigned int next = (uart_head + 1) % UART_BUFFER_SIZE;
+
+            if (next != uart_tail)
+            {
+                uart_buffer[uart_head] = c;
+                uart_head = next;
+            }
+        }
+
+        // If AUX still reports a pending UART interrupt but no RX data is
+        // available anymore, leave the handler to avoid a possible loop.
+        if (!uart_data_ready())
+        {
+            break;
+        }
     }
 }

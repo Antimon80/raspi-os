@@ -16,15 +16,11 @@ void irq_barrier(void);
 void gic_init(void);
 
 /*
- * Public UART IRQ buffer API
- * Used by the main loop / later by tasks.
- */
-int uart_read_char(char *c);
-
-/*
- * Internal IRQ entry points
+ * Central IRQ handler called from the exception vector.
  */
 void handle_irq(void);
+
+
 void exception_debug(void);
 
 #endif

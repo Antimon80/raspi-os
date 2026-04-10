@@ -4,19 +4,6 @@
 #include "rpi4/mmio.h"
 
 /*
- * Base addresses for peripherals and interrupt controller
- */
-#define PERIPHERAL_BASE ((uintptr_t)0xFE000000)
-#define AUX_BASE (PERIPHERAL_BASE + 0x215000)
-
-/*
- * AUX (Mini UART) registers
- */
-#define AUX_IRQ (AUX_BASE + 0x00)        // AUX interrupt status
-#define AUX_MU_IO_REG (AUX_BASE + 0x40)  // data register
-#define AUX_MU_LSR_REG (AUX_BASE + 0x54) // line status (bit 0 = data ready)
-
-/*
  * GIC-400 base addresses (BCM2711)
  */
 #define GIC_BASE ((uintptr_t)0xFF840000)
@@ -48,66 +35,16 @@
 /*
  * UART1 (Mini UART) interrupt:
  * VC IRQ 29 → GIC SPI 96 + 29 = 125
+ *
+ * Generic timer: PPI 30
  */
 #define UART1_GIC_INTID 125
-
-/*
- * Simple ring buffer for received UART characters
- */
-#define UART_BUFFER_SIZE 128
-
 #define TIMER_GIC_INTID 30
 
-static volatile char uart_buffer[UART_BUFFER_SIZE];
-static volatile uint32_t uart_head = 0;
-static volatile uint32_t uart_tail = 0;
-
 /*
- * Check if UART has received data
- */
-static int uart_data_ready(void)
-{
-    return mmio_read(AUX_MU_LSR_REG) & 0x01;
-}
-
-/*
- * UART RX interrupt handler:
- * Drain all available characters into ring buffer
- */
-static void uart_irq_handler(void)
-{
-    while (uart_data_ready())
-    {
-        char c = (char)mmio_read(AUX_MU_IO_REG);
-        uint32_t next = (uart_head + 1) % UART_BUFFER_SIZE;
-
-        // drop character if buffer is full
-        if (next != uart_tail)
-        {
-            uart_buffer[uart_head] = c;
-            uart_head = next;
-        }
-    }
-}
-
-/*
- * Read one character from software buffer
- * (non-blocking)
- */
-int uart_read_char(char *c)
-{
-    if (uart_head == uart_tail)
-    {
-        return 0;
-    }
-
-    *c = uart_buffer[uart_tail];
-    uart_tail = (uart_tail + 1) % UART_BUFFER_SIZE;
-    return 1;
-}
-
-/*
- * Initialize GIC for UART1 interrupt
+ * Initialize the interrupt controller for currently used interrupts:
+ *  - Mini UART receive interrupt
+ *  - Generic timer interrupt
  */
 void gic_init(void)
 {
@@ -165,7 +102,10 @@ void gic_init(void)
 }
 
 /*
- * Central IRQ handler (called from assembly vector)
+ * Central IRQ dispatcher called from the exception vector table.
+ *
+ * The handler acknowledges the interrupt at the CPU interface,
+ * dispatches to the responsible subsystem, then signals completion.
  */
 void handle_irq(void)
 {
@@ -174,11 +114,7 @@ void handle_irq(void)
 
     if (intid == UART1_GIC_INTID)
     {
-        // check AUX sub-interrupt (Mini UART = bit 0)
-        if (mmio_read(AUX_IRQ) & 0x1)
-        {
-            uart_irq_handler();
-        }
+        uart_irq_handler();
     }
     else if (intid == TIMER_GIC_INTID)
     {
@@ -190,7 +126,8 @@ void handle_irq(void)
 }
 
 /*
- * Debug output for unexpected exceptions
+ * Print ESR_EL1 and ELR_EL1 for unexpected synchronous exceptions.
+ * Used as a simple debug fallback before halting the system.
  */
 void exception_debug(void)
 {
