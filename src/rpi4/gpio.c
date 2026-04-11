@@ -181,6 +181,11 @@ void gpio_use_as_alt5(uint32_t pin)
     gpio_set_function(pin, GPIO_FUNC_ALT5);
 }
 
+void gpio_use_as_alt0(uint32_t pin){
+    gpio_set_pull(pin, GPIO_PULL_NONE);
+    gpio_set_function(pin, GPIO_FUNC_ALT0);
+}
+
 void gpio_use_as_input(uint32_t pin)
 {
     gpio_set_pull(pin, GPIO_PULL_NONE);

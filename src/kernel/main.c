@@ -7,7 +7,7 @@
 #include "kernel/panic.h"
 #include "kernel/shell.h"
 #include "kernel/timer.h"
-#include "kernel/tasks/joystick_test_task.h"
+#include "kernel/tasks/joystick_task.h"
 
 /*
  * Kernel entry point.
@@ -25,10 +25,8 @@ void main(void)
     {
         kernel_panic("Failed to create shell task\n");
     }
-
-    if (task_create(joystick_test_task, "joytest") < 0)
-    {
-        kernel_panic("Failed to create joystick test task\n");
+    if(task_create(joystick_task, "joystick") < 0){
+        kernel_panic("Failed to create joystick task\n");
     }
 
     irq_init();

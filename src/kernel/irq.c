@@ -43,6 +43,8 @@
 #define TIMER_GIC_INTID 30
 #define GPIO_GIC_INTID 49
 
+volatile int joystick_pending = 0;
+
 /*
  * Initialize the interrupt controller for currently used interrupts:
  *  - Mini UART receive interrupt
@@ -162,7 +164,7 @@ void handle_irq(void)
         if (gpio_event_detected(23))
         {
             gpio_clear_event(23);
-            uart_puts("JOY IRQ\n");
+            joystick_pending = 1;
         }
     }
 

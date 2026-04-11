@@ -8,6 +8,7 @@
 typedef enum {
     GPIO_FUNC_INPUT = 0,
     GPIO_FUNC_OUTPUT = 1,
+    GPIO_FUNC_ALT0 = 4,
     GPIO_FUNC_ALT5 = 2
 } gpio_function_t;
 
@@ -20,6 +21,7 @@ typedef enum {
 void gpio_set_function(uint32_t pin, gpio_function_t func);
 void gpio_set_pull(uint32_t pin, gpio_pull_t pull);
 void gpio_use_as_alt5(uint32_t pin);
+void gpio_use_as_alt0(uint32_t pin);
 
 /* Optional convenience helper */
 void gpio_use_as_input(uint32_t pin);
