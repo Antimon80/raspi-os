@@ -1,23 +1,34 @@
 #include "kernel/joy_menu.h"
 #include "kernel/scheduler.h"
+#include "rpi4/joystick.h"
+#include "rpi4/uart.h"
 
 extern volatile int joystick_pending;
 
-// will be replaced with I2C driver
-static joy_event_t joystick_read_event(void){
-    return JOY_EVENT_NONE;
-}
-
-void joystick_task(void){
+void joystick_task(void)
+{
     joy_menu_init();
 
-    while(1){
-        if(joystick_pending){
+    if (joystick_init() < 0)
+    {
+        uart_puts("joystick init failed\n");
+
+        while (1)
+        {
+            task_sleep(100);
+        }
+    }
+
+    while (1)
+    {
+        if (joystick_pending)
+        {
             joystick_pending = 0;
 
             joy_event_t ev = joystick_read_event();
 
-            if(ev != JOY_EVENT_NONE){
+            if (ev != JOY_EVENT_NONE)
+            {
                 joy_menu_handle_event(ev);
             }
         }

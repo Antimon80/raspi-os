@@ -69,43 +69,35 @@ static uint32_t gpio_call(uint32_t pin,
     uint32_t shift;
     uint32_t current_val;
 
-    /* Reject invalid pin numbers */
+    // Reject invalid pin numbers
     if (pin > field_max)
     {
         return 0;
     }
 
-    /* Bitmask covering one field (e.g. 3 bits → 0b111) */
+    // Bitmask covering one field (e.g. 3 bits → 0b111)
     field_mask = (1u << field_size) - 1u;
 
-    /* Reject values that do not fit into the field */
+    // Reject values that do not fit into the field
     if (value > field_mask)
     {
         return 0;
     }
 
-    /*
-     * Number of pin fields that fit into one 32-bit register.
-     *
-     * Example:
-     *   field_size = 3 bits → 32 / 3 ≈ 10 pins per register
-     */
+    // Number of pin fields that fit into one 32-bit register
     num_fields = 32u / field_size;
 
-    /* Determine which register controls this pin */
+    // Determine which register controls this pin
     reg = base + ((pin / num_fields) * 4u);
 
-    /* Determine bit position inside register */
+    // Determine bit position inside register
     shift = (pin % num_fields) * field_size;
 
-    /*
-     * Read-modify-write sequence:
-     *
-     * 1. Read current register value
-     * 2. Clear the bits corresponding to the target field
-     * 3. Insert the new value
-     * 4. Write the result back
-     */
+     // Read-modify-write sequence:
+     // 1. Read current register value
+     // 2. Clear the bits corresponding to the target field
+     // 3. Insert the new value
+     // 4. Write the result back
     current_val = mmio_read(reg);
 
     current_val &= ~(field_mask << shift);
@@ -127,6 +119,14 @@ static uintptr_t gpio_reg_for_pin(uint32_t pin, uintptr_t base)
     return base + ((pin / 32u) * 4u);
 }
 
+/*
+ * Return the bit mask for a specific GPIO pin inside a 32-bit register.
+ *
+ * Example:
+ *   pin 0  -> 0x00000001
+ *   pin 5  -> 0x00000020
+ *   pin 31 -> 0x80000000
+ */
 static uint32_t gpio_mask_for_pin(uint32_t pin)
 {
     return 1u << (pin % 32u);
@@ -181,17 +181,37 @@ void gpio_use_as_alt5(uint32_t pin)
     gpio_set_function(pin, GPIO_FUNC_ALT5);
 }
 
+/*
+ * Configure a GPIO pin to use Alternate Function 0 (ALT0).
+ *
+ * ALT0 is commonly used by peripherals such as I2C, SPI, or PL011 UART,
+ * depending on the selected GPIO pin.
+ *
+ * This helper disables pull resistors and switches the pin
+ * to ALT0 mode.
+ */
 void gpio_use_as_alt0(uint32_t pin){
     gpio_set_pull(pin, GPIO_PULL_NONE);
     gpio_set_function(pin, GPIO_FUNC_ALT0);
 }
 
+/*
+ * Configure a GPIO pin as a plain input pin.
+ *
+ * This helper disables pull resistors and selects input mode.
+ */
 void gpio_use_as_input(uint32_t pin)
 {
     gpio_set_pull(pin, GPIO_PULL_NONE);
     gpio_set_function(pin, GPIO_FUNC_INPUT);
 }
 
+/*
+ * Enable rising-edge event detection for a GPIO pin.
+ *
+ * An event is recorded when the pin signal changes from LOW to HIGH.
+ * The corresponding event flag can later be checked in GPEDS0.
+ */
 void gpio_enable_rising_edge(uint32_t pin)
 {
     if (pin > GPIO_MAX_PIN)
@@ -205,6 +225,12 @@ void gpio_enable_rising_edge(uint32_t pin)
     mmio_write(reg, value);
 }
 
+/*
+ * Enable falling-edge event detection for a GPIO pin.
+ *
+ * An event is recorded when the pin signal changes from HIGH to LOW.
+ * The corresponding event flag can later be checked in GPEDS0.
+ */
 void gpio_enable_falling_edge(uint32_t pin)
 {
     if (pin > GPIO_MAX_PIN)
@@ -218,6 +244,9 @@ void gpio_enable_falling_edge(uint32_t pin)
     mmio_write(reg, value);
 }
 
+/*
+ * Disable rising-edge event detection for a GPIO pin.
+ */
 void gpio_disable_rising_edge(uint32_t pin)
 {
     if (pin > GPIO_MAX_PIN)
@@ -231,6 +260,9 @@ void gpio_disable_rising_edge(uint32_t pin)
     mmio_write(reg, value);
 }
 
+/*
+ * Disable falling-edge event detection for a GPIO pin.
+ */
 void gpio_disable_falling_edge(uint32_t pin)
 {
     if (pin > GPIO_MAX_PIN)
@@ -244,6 +276,13 @@ void gpio_disable_falling_edge(uint32_t pin)
     mmio_write(reg, value);
 }
 
+/*
+ * Check whether an edge event has been detected for a GPIO pin.
+ *
+ * Returns:
+ *   non-zero if an event is pending
+ *   0 otherwise
+ */
 int gpio_event_detected(uint32_t pin)
 {
     if (pin > GPIO_MAX_PIN)
@@ -257,6 +296,12 @@ int gpio_event_detected(uint32_t pin)
     return (value & gpio_mask_for_pin(pin)) != 0;
 }
 
+/*
+ * Clear the pending event flag for a GPIO pin.
+ *
+ * GPIO event status bits are cleared by writing a 1 to the
+ * corresponding bit position in GPEDS0.
+ */
 void gpio_clear_event(uint32_t pin)
 {
     if (pin > GPIO_MAX_PIN)

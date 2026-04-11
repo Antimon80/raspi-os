@@ -3,6 +3,7 @@
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
+#include "rpi4/joystick.h"
 
 /*
  * GIC-400 base addresses (BCM2711)
@@ -45,10 +46,18 @@
 
 volatile int joystick_pending = 0;
 
+static void handle_gpio_irq(void){
+    if(gpio_event_detected(JOYSTICK_INT_GPIO)){
+        gpio_clear_event(JOYSTICK_INT_GPIO);
+        joystick_pending = 1;
+    }
+}
+
 /*
  * Initialize the interrupt controller for currently used interrupts:
  *  - Mini UART receive interrupt
  *  - Generic timer interrupt
+ *  - GPIO interrupt
  */
 void gic_init(void)
 {
@@ -161,11 +170,7 @@ void handle_irq(void)
     }
     else if (intid == GPIO_GIC_INTID)
     {
-        if (gpio_event_detected(23))
-        {
-            gpio_clear_event(23);
-            joystick_pending = 1;
-        }
+        handle_gpio_irq();
     }
 
     // signal end of interrupt to GIC
