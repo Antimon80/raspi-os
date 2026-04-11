@@ -350,6 +350,23 @@ void *kmalloc(size_t size)
     return 0;
 }
 
+void *kmalloc_zero(size_t size)
+{
+    uint8_t *ptr = (uint8_t *)kmalloc(size);
+
+    if (!ptr)
+    {
+        return 0;
+    }
+
+    for (size_t i = 0; i < size; i++)
+    {
+        ptr[i] = 0;
+    }
+
+    return ptr;
+}
+
 /*
  * Free a previously allocated heap block and merge neighbors if possible.
  */
@@ -434,4 +451,36 @@ void heap_dump(void)
     }
 
     uart_puts("=================\n");
+}
+
+void heap_stats(void)
+{
+    heap_block_t *current = heap_head;
+
+    size_t free_bytes = 0;
+    size_t used_bytes = 0;
+    size_t blocks = 0;
+
+    while (current)
+    {
+        if (current->free)
+        {
+            free_bytes += current->size;
+        }
+        else
+        {
+            used_bytes += current->size;
+        }
+
+        blocks++;
+        current = current->next;
+    }
+
+    uart_puts("heap used=");
+    uart_put_u64(used_bytes);
+    uart_puts(" free=");
+    uart_put_u64(free_bytes);
+    uart_puts(" blocks=");
+    uart_put_u64(blocks);
+    uart_puts("\n");
 }

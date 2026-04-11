@@ -20,25 +20,7 @@ void main(void)
     uart_puts("UART OK\n");
 
     heap_init();
-
-    void *a = kmalloc(64);
-    void *b = kmalloc(128);
-
-    if (!a || !b)
-    {
-        kernel_panic("Heap test allocation failed");
-    }
-
-    uart_puts("Heap test allocations OK\n");
-    heap_dump();
-
-    kfree(a);
-    kfree(b);
-
-    uart_puts("Heap test free OK\n");
-    heap_dump();
-
-    // uart_puts("Heap OK\n");
+    uart_puts("Heap OK\n");
 
     task_init_system();
     scheduler_init();

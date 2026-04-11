@@ -1,10 +1,24 @@
 #include "kernel/shell.h"
 #include "kernel/task.h"
 #include "kernel/scheduler.h"
+#include "kernel/heap.h"
 #include "kernel/tasks/demo_task.h"
 #include "rpi4/uart.h"
 
 #define SHELL_BUFFER_SIZE 64
+
+typedef struct
+{
+    const char *name;
+    void (*entry)(void);
+} startable_task_t;
+
+/*
+ * List of task types that may be started from the shell.
+ */
+static const startable_task_t startable_tasks[] = {
+    {"demo", demo_task},
+};
 
 /*
  * Compare two zero-terminated strings.
@@ -134,6 +148,26 @@ static void shell_print_task_state(task_state_t state)
 }
 
 /*
+ * Find a startable task type by name.
+ *
+ * Returns a pointer to the registry entry on success, NULL otherwise.
+ */
+static const startable_task_t *shell_find_startable_task(const char *name)
+{
+    int count = (int)(sizeof(startable_tasks) / sizeof(startable_tasks[0]));
+
+    for (int i = 0; i < count; i++)
+    {
+        if (str_equals(startable_tasks[i].name, name))
+        {
+            return &startable_tasks[i];
+        }
+    }
+
+    return 0;
+}
+
+/*
  * Find a non-unused task by name.
  *
  * Returns the task ID on success, -1 if not found.
@@ -170,9 +204,12 @@ void shell_cmd_help(void)
 {
     uart_puts("Commands: \n");
     uart_puts("  help\n");
+    uart_puts("  heap dump\n");
+    uart_puts("  heap stats\n");
     uart_puts("  ps\n");
-    uart_puts("  start demo\n");
-    uart_puts("  stop <id>\n");
+    uart_puts("  startable\n");
+    uart_puts("  start <name>\n");
+    uart_puts("  stop <id|name>\n");
 }
 
 /*
@@ -206,29 +243,64 @@ void shell_cmd_ps(void)
 }
 
 /*
- * Start the demo task if it does not already exist.
- */
-void shell_cmd_start_demo(void)
+* Print all startable tasks.
+*/
+static void shell_cmd_startable(void)
 {
-    int existing = shell_find_task_by_name("demo");
+    int count = (int)(sizeof(startable_tasks) / sizeof(startable_tasks[0]));
 
-    if (existing >= 0)
+    uart_puts("Startable tasks:\n");
+
+    for (int i = 0; i < count; i++)
     {
-        uart_puts("demo task already exists with id ");
+        uart_puts("  ");
+        uart_puts(startable_tasks[i].name);
+        uart_puts("\n");
+    }
+}
+
+/*
+ * Start a task by its registered shell name.
+ */
+static void shell_cmd_start_arg(const char *name)
+{
+    const startable_task_t *entry;
+    int existing;
+    int id;
+
+    if (!name || !*name)
+    {
+        uart_puts("missing task name\n");
+        return;
+    }
+
+    entry = shell_find_startable_task(name);
+
+    if (!entry)
+    {
+        uart_puts("unknown task name\n");
+        return;
+    }
+
+    existing = shell_find_task_by_name(name);
+
+    if (existing > 0)
+    {
+        uart_puts("task already exists with id ");
         uart_put_uint((unsigned int)existing);
         uart_puts("\n");
         return;
     }
 
-    int id = task_create(demo_task, "demo");
+    id = task_create(entry->entry, entry->name);
 
     if (id < 0)
     {
-        uart_puts("failed to create demo task\n");
+        uart_puts("failed to create task\n");
         return;
     }
 
-    uart_puts("demo task started with id ");
+    uart_puts("task started with id ");
     uart_put_uint((unsigned int)id);
     uart_puts("\n");
 }
@@ -255,7 +327,7 @@ void shell_cmd_stop_id(int id)
 
     if (str_equals(task->name, "idle"))
     {
-        uart_puts("refuding to stop idle task\n");
+        uart_puts("refusing to stop idle task\n");
         return;
     }
 
@@ -271,15 +343,29 @@ void shell_cmd_stop_id(int id)
 }
 
 /*
- * Parse and execute 'stop <id>' from UART shell input.
+ * Parse and execute 'stop <id|name>' from UART shell input.
  */
 static void shell_cmd_stop_arg(const char *arg)
 {
     int id;
 
-    if (parse_uint(arg, &id) < 0)
+    if (!arg || !*arg)
     {
-        uart_puts("invalid task id\n");
+        uart_puts("missing task id or name\n");
+        return;
+    }
+
+    if (parse_uint(arg, &id) == 0)
+    {
+        shell_cmd_stop_id(id);
+        return;
+    }
+
+    id = shell_find_task_by_name(arg);
+
+    if (id < 0)
+    {
+        uart_puts("task not found\n");
         return;
     }
 
@@ -299,9 +385,21 @@ static void shell_execute_command(char *cmd)
     {
         shell_cmd_ps();
     }
-    else if (str_equals(cmd, "start demo"))
+    else if (str_equals(cmd, "heap dump"))
     {
-        shell_cmd_start_demo();
+        heap_dump();
+    }
+    else if (str_equals(cmd, "heap stats"))
+    {
+        heap_stats();
+    }
+    else if (str_equals(cmd, "startable"))
+    {
+        shell_cmd_startable();
+    }
+    else if (str_equals(cmd, "start "))
+    {
+        shell_cmd_start_arg(cmd + 6);
     }
     else if (str_starts_with(cmd, "stop "))
     {
