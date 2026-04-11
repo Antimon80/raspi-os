@@ -34,6 +34,9 @@
 #define GPFSEL0 (GPIO_BASE + 0x00)
 #define GPSET0 (GPIO_BASE + 0x1C)
 #define GPCLR0 (GPIO_BASE + 0x28)
+#define GPEDS0 (GPIO_BASE + 0x40)
+#define GPREN0 (GPIO_BASE + 0x4C)
+#define GPFEN0 (GPIO_BASE + 0x58)
 #define GPPUPPDN0 (GPIO_BASE + 0xE4)
 
 /*
@@ -114,6 +117,22 @@ static uint32_t gpio_call(uint32_t pin,
 }
 
 /*
+ * Helper for 1-bit GPIO registers such as:
+ * - rising edge detect enable
+ * - falling edge detect enable
+ * - event detect status
+ */
+static uintptr_t gpio_reg_for_pin(uint32_t pin, uintptr_t base)
+{
+    return base + ((pin / 32u) * 4u);
+}
+
+static uint32_t gpio_mask_for_pin(uint32_t pin)
+{
+    return 1u << (pin % 32u);
+}
+
+/*
  * Configure the function of a GPIO pin.
  *
  * Each pin can operate in different modes:
@@ -160,4 +179,86 @@ void gpio_use_as_alt5(uint32_t pin)
 {
     gpio_set_pull(pin, GPIO_PULL_NONE);
     gpio_set_function(pin, GPIO_FUNC_ALT5);
+}
+
+void gpio_use_as_input(uint32_t pin)
+{
+    gpio_set_pull(pin, GPIO_PULL_NONE);
+    gpio_set_function(pin, GPIO_FUNC_INPUT);
+}
+
+void gpio_enable_rising_edge(uint32_t pin)
+{
+    if (pin > GPIO_MAX_PIN)
+    {
+        return;
+    }
+
+    uintptr_t reg = gpio_reg_for_pin(pin, GPREN0);
+    uint32_t value = mmio_read(reg);
+    value |= gpio_mask_for_pin(pin);
+    mmio_write(reg, value);
+}
+
+void gpio_enable_falling_edge(uint32_t pin)
+{
+    if (pin > GPIO_MAX_PIN)
+    {
+        return;
+    }
+
+    uintptr_t reg = gpio_reg_for_pin(pin, GPFEN0);
+    uint32_t value = mmio_read(reg);
+    value |= gpio_mask_for_pin(pin);
+    mmio_write(reg, value);
+}
+
+void gpio_disable_rising_edge(uint32_t pin)
+{
+    if (pin > GPIO_MAX_PIN)
+    {
+        return;
+    }
+
+    uintptr_t reg = gpio_reg_for_pin(pin, GPREN0);
+    uint32_t value = mmio_read(reg);
+    value &= ~gpio_mask_for_pin(pin);
+    mmio_write(reg, value);
+}
+
+void gpio_disable_falling_edge(uint32_t pin)
+{
+    if (pin > GPIO_MAX_PIN)
+    {
+        return;
+    }
+
+    uintptr_t reg = gpio_reg_for_pin(pin, GPFEN0);
+    uint32_t value = mmio_read(reg);
+    value &= ~gpio_mask_for_pin(pin);
+    mmio_write(reg, value);
+}
+
+int gpio_event_detected(uint32_t pin)
+{
+    if (pin > GPIO_MAX_PIN)
+    {
+        return 0;
+    }
+
+    uintptr_t reg = gpio_reg_for_pin(pin, GPEDS0);
+    uint32_t value = mmio_read(reg);
+
+    return (value & gpio_mask_for_pin(pin)) != 0;
+}
+
+void gpio_clear_event(uint32_t pin)
+{
+    if (pin > GPIO_MAX_PIN)
+    {
+        return;
+    }
+
+    uintptr_t reg = gpio_reg_for_pin(pin, GPEDS0);
+    mmio_write(reg, gpio_mask_for_pin(pin));
 }

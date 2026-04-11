@@ -1,32 +1,14 @@
 #include "kernel/shell.h"
 #include "kernel/task.h"
 #include "kernel/scheduler.h"
+#include "kernel/tasks/demo_task.h"
 #include "rpi4/uart.h"
 
 #define SHELL_BUFFER_SIZE 64
 
 /*
- * Simple demo task.
- * Periodically prints a message so that task switching becomes visible
- * on the UART output.
- */
-static void demo_task(void)
-{
-    while (1)
-    {
-        uart_puts("[demo]\n");
-
-        for (volatile unsigned long i = 0; i < 1000000UL; i++)
-        {
-        }
-
-        scheduler_yield();
-    }
-}
-
-/*
  * Compare two zero-terminated strings.
- * Returns 2 if equal, 0 otherwise.
+ * Returns 1 if equal, 0 otherwise.
  */
 static int str_equals(const char *a, const char *b)
 {
@@ -156,7 +138,7 @@ static void shell_print_task_state(task_state_t state)
  *
  * Returns the task ID on success, -1 if not found.
  */
-static int shell_find_task_by_name(const char *name)
+int shell_find_task_by_name(const char *name)
 {
     for (int i = 0; i < MAX_TASKS; i++)
     {
@@ -184,7 +166,7 @@ static int shell_find_task_by_name(const char *name)
 /*
  * Print a short help text.
  */
-static void shell_cmd_help(void)
+void shell_cmd_help(void)
 {
     uart_puts("Commands: \n");
     uart_puts("  help\n");
@@ -196,7 +178,7 @@ static void shell_cmd_help(void)
 /*
  * Print all non-unused tasks.
  */
-static void shell_cmd_ps(void)
+void shell_cmd_ps(void)
 {
     uart_puts("ID  STATE     NAME\n");
 
@@ -226,7 +208,7 @@ static void shell_cmd_ps(void)
 /*
  * Start the demo task if it does not already exist.
  */
-static void shell_cmd_start_demo(void)
+void shell_cmd_start_demo(void)
 {
     int existing = shell_find_task_by_name("demo");
 
@@ -252,20 +234,13 @@ static void shell_cmd_start_demo(void)
 }
 
 /*
- * Request termination of a task.
+ * Reusable command implementation that can be called both from the
+ * UART shell and from other frontends such as a joystick-controlled menu.
  */
-static void shell_cmd_stop(const char *arg)
+void shell_cmd_stop_id(int id)
 {
-    int id;
-    task_t *task;
+    task_t *task = task_get(id);
 
-    if (parse_uint(arg, &id) < 0)
-    {
-        uart_puts("invalid task id\n");
-        return;
-    }
-
-    task = task_get(id);
     if (!task || task->state == UNUSED)
     {
         uart_puts("task not found\n");
@@ -280,7 +255,7 @@ static void shell_cmd_stop(const char *arg)
 
     if (str_equals(task->name, "idle"))
     {
-        uart_puts("refusing to stop idle task\n");
+        uart_puts("refuding to stop idle task\n");
         return;
     }
 
@@ -293,6 +268,22 @@ static void shell_cmd_stop(const char *arg)
     uart_puts("stop requested for task ");
     uart_put_uint((unsigned int)id);
     uart_puts("\n");
+}
+
+/*
+ * Parse and execute 'stop <id>' from UART shell input.
+ */
+static void shell_cmd_stop_arg(const char *arg)
+{
+    int id;
+
+    if (parse_uint(arg, &id) < 0)
+    {
+        uart_puts("invalid task id\n");
+        return;
+    }
+
+    shell_cmd_stop_id(id);
 }
 
 /*
@@ -312,9 +303,9 @@ static void shell_execute_command(char *cmd)
     {
         shell_cmd_start_demo();
     }
-    else if (str_starts_with(cmd, "stop"))
+    else if (str_starts_with(cmd, "stop "))
     {
-        shell_cmd_stop(cmd + 5);
+        shell_cmd_stop_arg(cmd + 5);
     }
     else
     {

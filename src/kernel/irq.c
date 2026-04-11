@@ -2,6 +2,7 @@
 #include "kernel/timer.h"
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
+#include "rpi4/gpio.h"
 
 /*
  * GIC-400 base addresses (BCM2711)
@@ -40,6 +41,7 @@
  */
 #define UART1_GIC_INTID 125
 #define TIMER_GIC_INTID 30
+#define GPIO_GIC_INTID 49
 
 /*
  * Initialize the interrupt controller for currently used interrupts:
@@ -54,6 +56,10 @@ void gic_init(void)
 
     // disable distributor during setup
     mmio_write(GICD_CTLR, 0);
+
+    // --------------------
+    // UART interrupt
+    // --------------------
 
     // put interrupt into Group 1 (normal IRQ in EL1)
     reg = mmio_read(GICD_IGROUPR(UART1_GIC_INTID / 32));
@@ -75,6 +81,10 @@ void gic_init(void)
     // enable interrupt
     mmio_write(GICD_ISENABLER(UART1_GIC_INTID / 32), bit);
 
+    // --------------------
+    // timer interrupt
+    // --------------------
+
     // generic timer interrupt setup (PPI 30)
     bit = 1u << (TIMER_GIC_INTID % 32);
     shift = (TIMER_GIC_INTID % 4) * 8;
@@ -92,6 +102,33 @@ void gic_init(void)
 
     // enable timer interrupt
     mmio_write(GICD_ISENABLER(TIMER_GIC_INTID / 32), bit);
+
+    // --------------------
+    // GPIO interrupt
+    // --------------------
+
+    bit = 1u << (GPIO_GIC_INTID % 32);
+    shift = (GPIO_GIC_INTID % 4) * 8;
+
+    // put GPIO interrupt into Group 1
+    reg = mmio_read(GICD_IGROUPR(GPIO_GIC_INTID / 32));
+    reg |= bit;
+    mmio_write(GICD_IGROUPR(GPIO_GIC_INTID / 32), reg);
+
+    // set priority
+    reg = mmio_read(GICD_IPRIORITYR(GPIO_GIC_INTID));
+    reg &= ~(0xFFu << shift);
+    reg |= (0x90u << shift);
+    mmio_write(GICD_IPRIORITYR(GPIO_GIC_INTID), reg);
+
+    // route to CPU
+    reg = mmio_read(GICD_ITARGETSR(GPIO_GIC_INTID));
+    reg &= ~(0xFFu << shift);
+    reg |= (0x01u << shift);
+    mmio_write(GICD_ITARGETSR(GPIO_GIC_INTID), reg);
+
+    // enable
+    mmio_write(GICD_ISENABLER(GPIO_GIC_INTID / 32), bit);
 
     // allow all priorities
     mmio_write(GICC_PMR, 0xFF);
@@ -114,11 +151,19 @@ void handle_irq(void)
 
     if (intid == UART1_GIC_INTID)
     {
-        uart_irq_handler();
+        uart_handle_irq();
     }
     else if (intid == TIMER_GIC_INTID)
     {
         timer_handle_tick();
+    }
+    else if (intid == GPIO_GIC_INTID)
+    {
+        if (gpio_event_detected(23))
+        {
+            gpio_clear_event(23);
+            uart_puts("JOY IRQ\n");
+        }
     }
 
     // signal end of interrupt to GIC

@@ -1,5 +1,6 @@
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
+#include "rpi4/gpio.h"
 #include "kernel/irq.h"
 #include "kernel/task.h"
 #include "kernel/scheduler.h"
@@ -27,6 +28,14 @@ void main(void)
     irq_init();
     gic_init();
     timer_init(100); // 100 Hz = 10 ms per tick
+
+    gpio_use_as_input(23);
+    gpio_set_pull(23, GPIO_PULL_NONE);
+
+    gpio_clear_event(23);
+    gpio_enable_rising_edge(23);
+    gpio_enable_falling_edge(23);
+
     irq_enable();
 
     uart_puts("IRQ ready\n");
