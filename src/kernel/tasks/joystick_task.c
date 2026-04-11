@@ -1,6 +1,6 @@
 #include "kernel/joy_menu.h"
 #include "kernel/scheduler.h"
-#include "rpi4/joystick.h"
+#include "sensehat/joystick.h"
 #include "rpi4/uart.h"
 
 extern volatile int joystick_pending;

@@ -7,6 +7,7 @@
 #include "kernel/panic.h"
 #include "kernel/shell.h"
 #include "kernel/timer.h"
+#include "kernel/heap.h"
 #include "kernel/tasks/joystick_task.h"
 
 /*
@@ -18,6 +19,27 @@ void main(void)
     uart_puts("Boot OK\n");
     uart_puts("UART OK\n");
 
+    heap_init();
+
+    void *a = kmalloc(64);
+    void *b = kmalloc(128);
+
+    if (!a || !b)
+    {
+        kernel_panic("Heap test allocation failed");
+    }
+
+    uart_puts("Heap test allocations OK\n");
+    heap_dump();
+
+    kfree(a);
+    kfree(b);
+
+    uart_puts("Heap test free OK\n");
+    heap_dump();
+
+    // uart_puts("Heap OK\n");
+
     task_init_system();
     scheduler_init();
 
@@ -25,20 +47,14 @@ void main(void)
     {
         kernel_panic("Failed to create shell task\n");
     }
-    if(task_create(joystick_task, "joystick") < 0){
+    if (task_create(joystick_task, "joystick") < 0)
+    {
         kernel_panic("Failed to create joystick task\n");
     }
 
     irq_init();
     gic_init();
     timer_init(100); // 100 Hz = 10 ms per tick
-
-    gpio_use_as_input(23);
-    gpio_set_pull(23, GPIO_PULL_NONE);
-
-    gpio_clear_event(23);
-    gpio_enable_rising_edge(23);
-    gpio_enable_falling_edge(23);
 
     irq_enable();
 

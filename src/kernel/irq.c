@@ -3,7 +3,7 @@
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
-#include "rpi4/joystick.h"
+#include "sensehat/joystick.h"
 
 /*
  * GIC-400 base addresses (BCM2711)

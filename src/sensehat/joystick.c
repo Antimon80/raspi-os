@@ -1,4 +1,4 @@
-#include "rpi4/joystick.h"
+#include "sensehat/joystick.h"
 #include "rpi4/i2c.h"
 #include "rpi4/gpio.h"
 
