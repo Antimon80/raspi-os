@@ -1,4 +1,4 @@
-#include "kernel/heap.h"
+#include "kernel/memory/heap.h"
 #include "kernel/panic.h"
 #include "rpi4/uart.h"
 

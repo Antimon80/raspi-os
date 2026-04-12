@@ -1,5 +1,5 @@
-#ifndef IRQ_H
-#define IRQ_H
+#ifndef KERNEL_IRQ_H
+#define KERNEL_IRQ_H
 
 #include <stdint.h>
 

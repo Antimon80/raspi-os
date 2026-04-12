@@ -1,7 +1,7 @@
-#ifndef RPI4_JOYSTICK_H
-#define PRI4_JOYSTICK_H
+#ifndef SENSEHAT_JOYSTICK_H
+#define SENSEHAT_JOYSTICK_H
 
-#include "kernel/joy_menu.h"
+#include "kernel/shell/joy_menu.h"
 
 #define JOYSTICK_INT_GPIO 23
 

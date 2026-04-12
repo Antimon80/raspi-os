@@ -2,12 +2,13 @@
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
 #include "kernel/irq.h"
-#include "kernel/task.h"
-#include "kernel/scheduler.h"
+#include "kernel/sched/task.h"
+#include "kernel/sched/scheduler.h"
 #include "kernel/panic.h"
-#include "kernel/shell.h"
+#include "kernel/shell/shell.h"
 #include "kernel/timer.h"
-#include "kernel/heap.h"
+#include "kernel/memory/heap.h"
+#include "kernel/memory/log.h"
 #include "kernel/tasks/joystick_task.h"
 
 /*
@@ -21,6 +22,9 @@ void main(void)
 
     heap_init();
     uart_puts("Heap OK\n");
+
+    log_init();
+    uart_puts("Log OK\n");
 
     task_init_system();
     scheduler_init();

@@ -1,7 +1,8 @@
-#include "kernel/shell.h"
-#include "kernel/task.h"
-#include "kernel/scheduler.h"
-#include "kernel/heap.h"
+#include "kernel/shell/shell.h"
+#include "kernel/sched/task.h"
+#include "kernel/sched/scheduler.h"
+#include "kernel/memory/heap.h"
+#include "kernel/memory/log.h"
 #include "kernel/tasks/demo_task.h"
 #include "rpi4/uart.h"
 
@@ -168,6 +169,39 @@ static const startable_task_t *shell_find_startable_task(const char *name)
 }
 
 /*
+ * Resolve a task argument that may either be a numeric task ID or a task name.
+ *
+ * Returns 0 on success and stores the resolved ID in *task_id.
+ * Returns -1 on failure.
+ */
+static int shell_resolve_task_arg(const char *arg, int *task_id)
+{
+    int id;
+
+    if (!arg || !*arg || !task_id)
+    {
+        return -1;
+    }
+
+    if (parse_uint(arg, &id) == 0)
+    {
+        *task_id = id;
+        return 0;
+    }
+
+    id = shell_find_task_by_name(arg);
+
+    if (id < 0)
+    {
+        return -1;
+    }
+
+    *task_id = id;
+
+    return 0;
+}
+
+/*
  * Find a non-unused task by name.
  *
  * Returns the task ID on success, -1 if not found.
@@ -206,6 +240,8 @@ void shell_cmd_help(void)
     uart_puts("  help\n");
     uart_puts("  heap dump\n");
     uart_puts("  heap stats\n");
+    uart_puts("  log <id|name>\n");
+    uart_puts("  log clear <id|name>\n");
     uart_puts("  ps\n");
     uart_puts("  startable\n");
     uart_puts("  start <name>\n");
@@ -243,8 +279,8 @@ void shell_cmd_ps(void)
 }
 
 /*
-* Print all startable tasks.
-*/
+ * Print all startable tasks.
+ */
 static void shell_cmd_startable(void)
 {
     int count = (int)(sizeof(startable_tasks) / sizeof(startable_tasks[0]));
@@ -262,7 +298,7 @@ static void shell_cmd_startable(void)
 /*
  * Start a task by its registered shell name.
  */
-static void shell_cmd_start_arg(const char *name)
+void shell_cmd_start_arg(const char *name)
 {
     const startable_task_t *entry;
     int existing;
@@ -345,31 +381,50 @@ void shell_cmd_stop_id(int id)
 /*
  * Parse and execute 'stop <id|name>' from UART shell input.
  */
-static void shell_cmd_stop_arg(const char *arg)
+void shell_cmd_stop_arg(const char *arg)
 {
     int id;
 
-    if (!arg || !*arg)
-    {
-        uart_puts("missing task id or name\n");
-        return;
-    }
-
-    if (parse_uint(arg, &id) == 0)
-    {
-        shell_cmd_stop_id(id);
-        return;
-    }
-
-    id = shell_find_task_by_name(arg);
-
-    if (id < 0)
+    if (shell_resolve_task_arg(arg, &id) < 0)
     {
         uart_puts("task not found\n");
         return;
     }
 
     shell_cmd_stop_id(id);
+}
+
+/*
+ * Parse and execute 'log <id|name>' from UART shell input.
+ */
+static void shell_cmd_log_arg(const char *arg)
+{
+    int id;
+
+    if (shell_resolve_task_arg(arg, &id) < 0)
+    {
+        uart_puts("task not found\n");
+        return;
+    }
+
+    log_dump_task_id(id);
+}
+
+/*
+ * Parse and execute 'log clear <id|name>' from UART shell input.
+ */
+static void shell_cmd_log_clear_arg(const char *arg)
+{
+    int id;
+
+    if (shell_resolve_task_arg(arg, &id) < 0)
+    {
+        uart_puts("task not found\n");
+        return;
+    }
+
+    log_clear_task_id(id);
+    uart_puts("log cleared\n");
 }
 
 /*
@@ -397,13 +452,21 @@ static void shell_execute_command(char *cmd)
     {
         shell_cmd_startable();
     }
-    else if (str_equals(cmd, "start "))
+    else if (str_starts_with(cmd, "start "))
     {
         shell_cmd_start_arg(cmd + 6);
     }
     else if (str_starts_with(cmd, "stop "))
     {
         shell_cmd_stop_arg(cmd + 5);
+    }
+    else if (str_starts_with(cmd, "log clear "))
+    {
+        shell_cmd_log_clear_arg(cmd + 10);
+    }
+    else if (str_starts_with(cmd, "log "))
+    {
+        shell_cmd_log_arg(cmd + 4);
     }
     else
     {

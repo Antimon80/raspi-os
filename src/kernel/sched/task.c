@@ -1,4 +1,5 @@
-#include "kernel/task.h"
+#include "kernel/sched/task.h"
+#include "kernel/memory/log.h"
 
 /*
  * Entry point for newly created tasks.
@@ -190,6 +191,7 @@ void task_reap_dying(int exclude_id)
 
         if (task->state == DYING)
         {
+            log_clear_task_id(i);
             task_clear(task);
         }
     }

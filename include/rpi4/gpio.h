@@ -1,5 +1,5 @@
-#ifndef GPIO_H
-#define GPIO_H
+#ifndef RPI4_GPIO_H
+#define RPI4_GPIO_H
 
 #include <stdint.h>
 

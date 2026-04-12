@@ -1,5 +1,5 @@
-#ifndef MMIO_H
-#define MMIO_H
+#ifndef RPI4_MMIO_H
+#define RPI4_MMIO_H
 
 #include <stdint.h>
 

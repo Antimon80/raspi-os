@@ -1,5 +1,6 @@
 #include "kernel/tasks/demo_task.h"
-#include "rpi4/uart.h"
+#include "kernel/memory/log.h"
+#include "kernel/sched/scheduler.h"
 
 /*
  * Simple demo task.
@@ -8,14 +9,24 @@
  */
 void demo_task(void)
 {
+    int counter = 0;
+
+    log_append_current_task("demo task started");
+
     while (1)
     {
-        uart_puts("[demo]\n");
+        counter++;
 
-        for (volatile unsigned long i = 0; i < 1000000UL; i++)
+        if (counter == 1)
         {
+            log_append_current_task("demo loop entered");
         }
 
-        scheduler_yield();
+        if ((counter % 5) == 0)
+        {
+            log_append_current_task("demo heartbeat");
+        }
+
+        task_sleep(100);
     }
 }

@@ -1,5 +1,5 @@
 #include "kernel/timer.h"
-#include "kernel/task.h"
+#include "kernel/sched/task.h"
 
 static volatile uint64_t system_ticks = 0;
 static uint32_t timer_interval = 0;

@@ -1,5 +1,5 @@
-#include "kernel/scheduler.h"
-#include "kernel/task.h"
+#include "kernel/sched/scheduler.h"
+#include "kernel/sched/task.h"
 #include "kernel/panic.h"
 #include "kernel/timer.h"
 #include "rpi4/uart.h"

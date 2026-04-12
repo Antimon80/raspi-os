@@ -1,5 +1,5 @@
-#ifndef KERNEL_SCHEDULER_H
-#define KERNEL_SCHEDULER_H
+#ifndef KERNEL_SCHED_SCHEDULER_H
+#define KERNEL_SCHED_SCHEDULER_H
 
 #include <stdint.h>
 

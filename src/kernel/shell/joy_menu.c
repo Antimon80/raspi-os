@@ -1,9 +1,8 @@
-#include "kernel/joy_menu.h"
-#include "kernel/shell.h"
+#include "kernel/shell/joy_menu.h"
+#include "kernel/shell/shell.h"
 #include "kernel/timer.h"
 #include "rpi4/uart.h"
 
-#define JOY_MENU_ITEMS 4
 #define JOY_LONG_PRESS_TICKS 50
 
 /*
@@ -22,21 +21,60 @@ typedef struct
     uint64_t center_press_tick;
 } joy_menu_state_t;
 
+/*
+ * One menu entry consists of the visible label and the action that
+ * is executed when the entry is selected.
+ */
+typedef struct
+{
+    const char *label;
+    void (*action)(void);
+} joy_menu_entry_t;
+
 /* Global menu state (single instance) */
 static joy_menu_state_t menu_state;
 
 /*
+ * Menu action wrappers.
+ *
+ * The joystick menu cannot accept free-text input, so task-specific
+ * actions are exposed as explicit menu entries.
+ */
+static void joy_menu_cmd_help(void)
+{
+    shell_cmd_help();
+}
+
+static void joy_menu_cmd_ps(void)
+{
+    shell_cmd_ps();
+}
+
+static void joy_menu_cmd_start_demo(void)
+{
+    shell_cmd_start_arg("demo");
+}
+
+static void joy_menu_cmd_stop_demo(void)
+{
+    shell_cmd_stop_arg("demo");
+}
+
+/*
  * Static list of menu entries.
  *
- * Each entry corresponds to a shell command that will be executed
- * when the user selects it and performs a short press.
+ * Each entry contains both the visible label and the function that
+ * should be executed when selected.
  */
-static const char *menu_entries[JOY_MENU_ITEMS] =
-    {
-        "help",
-        "ps",
-        "start demo",
-        "stop demo"};
+static const joy_menu_entry_t menu_entries[] =
+{
+    { "help",       joy_menu_cmd_help },
+    { "ps",         joy_menu_cmd_ps },
+    { "start demo", joy_menu_cmd_start_demo },
+    { "stop demo",  joy_menu_cmd_stop_demo }
+};
+
+#define JOY_MENU_ITEMS ((int)(sizeof(menu_entries) / sizeof(menu_entries[0])))
 
 /*
  * Render the joystick menu to the UART console.
@@ -58,49 +96,24 @@ static void joy_menu_render(void)
             uart_puts("  ");
         }
 
-        uart_puts(menu_entries[i]);
+        uart_puts(menu_entries[i].label);
         uart_puts("\n");
     }
 }
 
 /*
  * Execute the currently selected menu entry.
- *
- * This maps menu indices to corresponding shell commands.
  */
 static void joy_menu_execute_selected(void)
 {
-    switch (menu_state.selected)
+    if (menu_state.selected < 0 || menu_state.selected >= JOY_MENU_ITEMS)
     {
-    case 0:
-        shell_cmd_help();
-        break;
-
-    case 1:
-        shell_cmd_ps();
-        break;
-
-    case 2:
-        shell_cmd_start_demo();
-        break;
-
-    case 3:
-    {
-        int id = shell_find_task_by_name("demo");
-
-        if (id >= 0)
-        {
-            shell_cmd_stop_id(id);
-        }
-        else
-        {
-            uart_puts("demo task not running\n");
-        }
-        break;
+        return;
     }
 
-    default:
-        break;
+    if (menu_entries[menu_state.selected].action)
+    {
+        menu_entries[menu_state.selected].action();
     }
 }
 
@@ -127,8 +140,8 @@ void joy_menu_init(void)
  *
  * - CENTER_RELEASE:
  *     Distinguish between:
- *       * long press  → toggle menu open/close
- *       * short press → execute selected entry (if menu is active)
+ *       * long press  -> toggle menu open/close
+ *       * short press -> execute selected entry (if menu is active)
  *
  * - UP / DOWN:
  *     Navigate through menu entries (only if menu is active).

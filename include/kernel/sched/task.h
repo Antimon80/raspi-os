@@ -1,5 +1,5 @@
-#ifndef KERNEL_TASK_H
-#define KERNEL_TASK_H
+#ifndef KERNEL_SCHED_TASK_H
+#define KERNEL_SCHED_TASK_H
 
 #include <stdint.h>
 
