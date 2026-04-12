@@ -21,7 +21,7 @@ int str_length(const char *s)
 }
 
 /* Copy a zero-terminated string into a fixed-size buffer.*/
-static void str_copy(char *dst, const char *src, int max_len)
+void str_copy(char *dst, const char *src, int max_len)
 {
     int i = 0;
 
