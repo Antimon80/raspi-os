@@ -71,6 +71,7 @@ static void idle_task(void)
     while (1)
     {
         asm volatile("wfe");
+        scheduler_yield();
     }
 }
 
@@ -99,6 +100,63 @@ void scheduler_init(void)
 int scheduler_current_task_id(void)
 {
     return current_task_id;
+}
+
+/*
+ * Mark the current task as BLOCKED without yielding immediately.
+ *
+ * This is used for atomic check-then-block sequences where interrupts
+ * are disabled and the caller will yield only after re-enabling them.
+ */
+void task_block_current_no_yield(void)
+{
+    int id = current_task_id;
+
+    if (id < 0)
+    {
+        kernel_panic("task_block_current_no_yield: invalid current task\n");
+    }
+
+    task_t *task = task_get(id);
+
+    if (!task)
+    {
+        kernel_panic("task_block_current_no_yield: task lookup failed\n");
+    }
+
+    task->state = BLOCKED;
+}
+
+/*
+ * Block the current task until an external event wakes it.
+ *
+ * The task state is set to BLOCKED and the CPU is yielded so another
+ * runnable task can be scheduled.
+ */
+void task_block_current(void)
+{
+    task_block_current_no_yield();
+    scheduler_yield();
+}
+
+/*
+ * Wake a task that is blocked on an external event.
+ *
+ * If the task exists and is currently BLOCKED, it becomes READY again.
+ */
+void task_wakeup(int id)
+{
+    task_t *task = task_get(id);
+
+    if (!task)
+    {
+        return;
+    }
+
+    if (task->state == BLOCKED)
+    {
+        task->state = READY;
+    }
 }
 
 /*

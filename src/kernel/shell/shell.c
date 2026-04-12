@@ -471,39 +471,36 @@ void shell_task(void)
     {
         char c;
 
-        if (uart_read_char(&c))
+        uart_read_char_blocking(&c);
+
+        if (c == '\r' || c == '\n')
         {
-            if (c == '\r' || c == '\n')
-            {
-                uart_puts("\n");
-                buffer[len] = '\0';
+            uart_puts("\n");
+            buffer[len] = '\0';
 
-                if (len > 0)
-                {
-                    shell_execute_command(buffer);
-                }
+            if (len > 0)
+            {
+                shell_execute_command(buffer);
+            }
 
-                len = 0;
-                uart_puts("> ");
-            }
-            else if (c == '\b' || c == 127)
+            len = 0;
+            uart_puts("> ");
+        }
+        else if (c == '\b' || c == 127)
+        {
+            if (len > 0)
             {
-                if (len > 0)
-                {
-                    len--;
-                    uart_puts("\b \b");
-                }
-            }
-            else
-            {
-                if (len < (SHELL_BUFFER_SIZE - 1))
-                {
-                    buffer[len++] = c;
-                    uart_putc(c);
-                }
+                len--;
+                uart_puts("\b \b");
             }
         }
-
-        scheduler_yield();
+        else
+        {
+            if (len < (SHELL_BUFFER_SIZE - 1))
+            {
+                buffer[len++] = c;
+                uart_putc(c);
+            }
+        }
     }
 }

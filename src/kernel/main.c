@@ -29,10 +29,15 @@ void main(void)
     task_init_system();
     scheduler_init();
 
-    if (task_create(shell_task, "shell") < 0)
+    int shell_id = task_create(shell_task, "shell");
+
+    if (shell_id < 0)
     {
         kernel_panic("Failed to create shell task\n");
     }
+
+    uart_set_rx_task(shell_id);
+
     if (task_create(joystick_task, "joystick") < 0)
     {
         kernel_panic("Failed to create joystick task\n");

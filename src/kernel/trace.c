@@ -14,7 +14,7 @@ static volatile unsigned int trace_tail = 0;
  * If the buffer is full, the oldest entry is overwritten.
  */
 void trace_record(trace_event_type_t type, int from_task, int to_task, int arg){
-    unsigned int next = (trace_head + 1U) & TRACE_BUFFER_SIZE;
+    unsigned int next = (trace_head + 1U) % TRACE_BUFFER_SIZE;
 
     if(next == trace_tail){
         trace_tail = (trace_tail + 1U) % TRACE_BUFFER_SIZE;

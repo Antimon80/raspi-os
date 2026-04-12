@@ -2,6 +2,8 @@
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
 #include "util/convert.h"
+#include "kernel/sched/scheduler.h"
+#include "kernel/irq.h"
 
 /* Base address of peripheral MMIO region (Raspberry Pi 4 BCM2711) */
 #define PERIPHERAL_BASE ((uintptr_t)0xFE000000)
@@ -36,6 +38,16 @@
 static volatile char uart_buffer[UART_BUFFER_SIZE];
 static volatile unsigned int uart_head = 0;
 static volatile unsigned int uart_tail = 0;
+static int uart_rx_task_id = -1;
+
+/*
+ * Register the task that should be woken when UART RX data arrives.
+ */
+void uart_set_rx_task(int task_id)
+{
+    uart_rx_task_id = task_id;
+}
+
 /*
  * Check whether the UART transmit FIFO can accept a new byte.
  * Bit 5 of the Line Status Register indicates TX readiness.
@@ -128,6 +140,39 @@ int uart_read_char(char *c)
 }
 
 /*
+ * Read one character from the UART software RX buffer.
+ *
+ * If no character is currently available, the calling task is blocked
+ * atomically with interrupts disabled to avoid lost wakeups. The task
+ * is resumed by the UART interrupt handler once new RX data arrives.
+ *
+ * Returns 1 after a character has been stored in *c.
+ */
+int uart_read_char_blocking(char *c)
+{
+    if (!c)
+    {
+        return 0;
+    }
+
+    while (1)
+    {
+        irq_disable();
+
+        if (uart_read_char(c))
+        {
+            irq_enable();
+            return 1;
+        }
+
+        task_block_current_no_yield();
+        irq_enable();
+
+        scheduler_yield();
+    }
+}
+
+/*
  * Print an unsigned integer to UART.
  */
 void uart_put_uint(unsigned int value)
@@ -184,6 +229,8 @@ void uart_put_hex_uintptr(uintptr_t value)
  */
 void uart_handle_irq(void)
 {
+    int received = 0;
+
     // AUX bit 0 indicates a Mini UART interrupt is pending.
     // While it is pendig, drain all available RX bytes.
     while (mmio_read(AUX_IRQ) & 0x1)
@@ -197,6 +244,7 @@ void uart_handle_irq(void)
             {
                 uart_buffer[uart_head] = c;
                 uart_head = next;
+                received = 1;
             }
         }
 
@@ -206,5 +254,10 @@ void uart_handle_irq(void)
         {
             break;
         }
+    }
+
+    if (received && uart_rx_task_id >= 0)
+    {
+        task_wakeup(uart_rx_task_id);
     }
 }
