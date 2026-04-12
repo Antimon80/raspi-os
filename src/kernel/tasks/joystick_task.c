@@ -1,5 +1,5 @@
-#include "kernel/joy_menu.h"
-#include "kernel/scheduler.h"
+#include "kernel/shell/joy_menu.h"
+#include "kernel/sched/scheduler.h"
 #include "sensehat/joystick.h"
 #include "rpi4/uart.h"
 

@@ -5,6 +5,8 @@
 #include "kernel/memory/log.h"
 #include "kernel/tasks/demo_task.h"
 #include "rpi4/uart.h"
+#include "util/string.h"
+#include "util/convert.h"
 
 #define SHELL_BUFFER_SIZE 64
 
@@ -20,102 +22,6 @@ typedef struct
 static const startable_task_t startable_tasks[] = {
     {"demo", demo_task},
 };
-
-/*
- * Compare two zero-terminated strings.
- * Returns 1 if equal, 0 otherwise.
- */
-static int str_equals(const char *a, const char *b)
-{
-    while (*a && *b)
-    {
-        if (*a != *b)
-        {
-            return 0;
-        }
-
-        a++;
-        b++;
-    }
-
-    return (*a == '\0' && *b == '\0');
-}
-
-/*
- * Check whether 'str' starts with 'prefix'.
- *
- * Returns 1 if true, 0 otherwise.
- */
-static int str_starts_with(const char *str, const char *prefix)
-{
-    while (*prefix)
-    {
-        if (*str != *prefix)
-        {
-            return 0;
-        }
-
-        str++;
-        prefix++;
-    }
-
-    return 1;
-}
-
-/*
- * Parse an unsigned decimal integer.
- *
- * Returns 0 on success, -1 on failure.
- */
-static int parse_uint(const char *s, int *value)
-{
-    int result = 0;
-
-    if (!s || !*s || !value)
-    {
-        return -1;
-    }
-
-    while (*s)
-    {
-        if (*s < '0' || *s > '9')
-        {
-            return -1;
-        }
-
-        result = result * 10 + (*s - '0');
-        s++;
-    }
-
-    *value = result;
-    return 0;
-}
-
-/*
- * Print an unsigned integer to UART.
- */
-static void uart_put_uint(unsigned int value)
-{
-    char buffer[16];
-    int i = 0;
-
-    if (value == 0)
-    {
-        uart_putc('0');
-        return;
-    }
-
-    while (value > 0)
-    {
-        buffer[i++] = (char)('0' + (value % 10));
-        value /= 10;
-    }
-
-    while (i > 0)
-    {
-        uart_putc(buffer[--i]);
-    }
-}
 
 /*
  * Print a textual representation of a task state.

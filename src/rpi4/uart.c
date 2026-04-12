@@ -1,6 +1,7 @@
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
+#include "util/convert.h"
 
 /* Base address of peripheral MMIO region (Raspberry Pi 4 BCM2711) */
 #define PERIPHERAL_BASE ((uintptr_t)0xFE000000)
@@ -124,6 +125,53 @@ int uart_read_char(char *c)
     *c = uart_buffer[uart_tail];
     uart_tail = (uart_tail + 1) % UART_BUFFER_SIZE;
     return 1;
+}
+
+/*
+ * Print an unsigned integer to UART.
+ */
+void uart_put_uint(unsigned int value)
+{
+    char buffer[16];
+    int i = 0;
+
+    if (value == 0)
+    {
+        uart_putc('0');
+        return;
+    }
+
+    while (value > 0)
+    {
+        buffer[i++] = (char)('0' + (value % 10));
+        value /= 10;
+    }
+
+    while (i > 0)
+    {
+        uart_putc(buffer[--i]);
+    }
+}
+
+/*
+ * Print an unsigned decimal integer to UART.
+ */
+void uart_put_u64(uint64_t value)
+{
+    char buffer[32];
+    utoa_dec(value, buffer, sizeof(buffer));
+    uart_puts(buffer);
+}
+
+/*
+ * Print a pointer-sized value as hexadecimal to UART.
+ */
+void uart_put_hex_uintptr(uintptr_t value)
+{
+    char buffer[32];
+    uart_puts("0x");
+    utoa_hex((uint64_t)value, buffer, sizeof(buffer));
+    uart_puts(buffer);
 }
 
 /*

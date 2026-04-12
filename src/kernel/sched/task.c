@@ -1,5 +1,6 @@
 #include "kernel/sched/task.h"
 #include "kernel/memory/log.h"
+#include "util/string.h"
 
 /*
  * Entry point for newly created tasks.
@@ -12,30 +13,7 @@ extern void task_bootstrap(void);
 /* Global task table (statically allocated). */
 static task_t tasks[MAX_TASKS];
 
-/* Copy a zero-terminated string into a fixed-size buffer.*/
-static void str_copy(char *dst, const char *src, int max_len)
-{
-    int i = 0;
 
-    if (!dst || max_len < 0)
-    {
-        return;
-    }
-
-    if (!src)
-    {
-        dst[0] = '\0';
-        return;
-    }
-
-    while (src[i] != '\0' && i < (max_len - 1))
-    {
-        dst[i] = src[i];
-        i++;
-    }
-
-    dst[i] = '\0';
-}
 
 /* Reset a task slot to the UNUSED state. */
 static void task_clear(task_t *task)

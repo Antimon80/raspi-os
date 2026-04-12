@@ -3,6 +3,7 @@
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
 #include "rpi4/uart.h"
+#include "util/string.h"
 
 typedef struct log_entry
 {
@@ -19,55 +20,6 @@ typedef struct task_log
 
 /* One log list per task slot. */
 static task_log_t task_logs[MAX_TASKS];
-
-/*
- * Return the length of a zero-terminated string.
- */
-static int str_length(const char *s)
-{
-    int len = 0;
-
-    if (!s)
-    {
-        return 0;
-    }
-
-    while (s[len] != '\0')
-    {
-        len++;
-    }
-
-    return len;
-}
-
-/*
- * Copy a zero-terminated string into the destination buffer.
- *
- * The caller must ensure that dst is large enough.
- */
-static void str_copy(char *dst, const char *src)
-{
-    int i = 0;
-
-    if (!dst)
-    {
-        return;
-    }
-
-    if (!src)
-    {
-        dst[0] = '\0';
-        return;
-    }
-
-    while (src[i] != '\0')
-    {
-        dst[i] = src[i];
-        i++;
-    }
-
-    dst[i] = '\0';
-}
 
 /*
  * Return the per-task log structure for a valid task ID.
@@ -134,7 +86,7 @@ int log_append_task_id(int task_id, const char *message)
         return -1;
     }
 
-    str_copy(copy, message);
+    str_copy(copy, message, len + 1);
 
     entry->message = copy;
     entry->next = 0;
