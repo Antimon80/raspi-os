@@ -5,9 +5,19 @@
 #include "rpi4/uart.h"
 #include "util/string.h"
 
+#define LOG_MAX_ENTRIES_PER_TASK 32
+
+typedef enum
+{
+    LOG_ENTRY_TEXT = 0,
+    LOG_ENTRY_INT
+} log_entry_type_t;
+
 typedef struct log_entry
 {
+    log_entry_type_t type;
     char *message;
+    int value;
     struct log_entry *next;
 } log_entry_t;
 
@@ -37,6 +47,39 @@ static task_log_t *log_get_task_log(int task_id)
 }
 
 /*
+ * Remove the oldest log entry from a task log.
+ */
+static void log_drop_oldest(task_log_t *log)
+{
+    log_entry_t *old;
+
+    if (!log || !log->head)
+    {
+        return;
+    }
+
+    old = log->head;
+    log->head = old->next;
+
+    if (!log->head)
+    {
+        log->tail = 0;
+    }
+
+    if (old->message)
+    {
+        kfree(old->message);
+    }
+
+    kfree(old);
+
+    if (log->count > 0)
+    {
+        log->count--;
+    }
+}
+
+/*
  * Initialize all task log lists.
  */
 void log_init(void)
@@ -50,19 +93,17 @@ void log_init(void)
 }
 
 /*
- * Append a message to the log of the given task ID.
+ * Append a log entry to the log of the given task ID.
+ *
+ * The message may be NULL. The integer value is stored directly
+ * in the log entry.
  */
-int log_append_task_id(int task_id, const char *message)
+int log_append_task_id(int task_id, const char *message, int value)
 {
     task_log_t *log;
     log_entry_t *entry;
-    char *copy;
-    int len;
-
-    if (!message)
-    {
-        return -1;
-    }
+    char *copy = 0;
+    int len = 0;
 
     log = log_get_task_log(task_id);
 
@@ -71,25 +112,38 @@ int log_append_task_id(int task_id, const char *message)
         return -1;
     }
 
-    len = str_length(message);
+    if (message)
+    {
+        len = str_length(message);
+
+        copy = (char *)kmalloc((size_t)len + 1);
+        if (!copy)
+        {
+            return -1;
+        }
+
+        str_copy(copy, message, len + 1);
+    }
 
     entry = (log_entry_t *)kmalloc_zero(sizeof(log_entry_t));
     if (!entry)
     {
+        if (copy)
+        {
+            kfree(copy);
+        }
+
         return -1;
     }
-
-    copy = (char *)kmalloc((size_t)len + 1);
-    if (!copy)
-    {
-        kfree(entry);
-        return -1;
-    }
-
-    str_copy(copy, message, len + 1);
 
     entry->message = copy;
+    entry->value = value;
     entry->next = 0;
+
+    if (log->count >= LOG_MAX_ENTRIES_PER_TASK)
+    {
+        log_drop_oldest(log);
+    }
 
     if (!log->head)
     {
@@ -108,22 +162,22 @@ int log_append_task_id(int task_id, const char *message)
 }
 
 /*
- * Append a message to the log of the given task.
+ * Append a log entry to the log of the given task.
  */
-int log_append_task(task_t *task, const char *message)
+int log_append_task(task_t *task, const char *message, int value)
 {
     if (!task)
     {
         return -1;
     }
 
-    return log_append_task_id(task->id, message);
+    return log_append_task_id(task->id, message, value);
 }
 
 /*
- * Append a message to the log of the currently running task.
+ * Append a log entry to the log of the currently running task.
  */
-int log_append_current_task(const char *message)
+int log_append_current_task(const char *message, int value)
 {
     int id = scheduler_current_task_id();
 
@@ -132,7 +186,7 @@ int log_append_current_task(const char *message)
         return -1;
     }
 
-    return log_append_task_id(id, message);
+    return log_append_task_id(id, message, value);
 }
 
 /*
@@ -165,9 +219,20 @@ void log_dump_task_id(int task_id)
         {
             uart_puts(current->message);
         }
-        else
+
+        if (current->value < 0)
         {
-            uart_puts("(null)");
+            uart_putc('-');
+            uart_put_uint((unsigned int)(-current->value));
+        }
+        else if (current->value > 0)
+        {
+            uart_put_uint((unsigned int)current->value);
+        }
+
+        if (!current->message && current->value == 0)
+        {
+            uart_puts("(empty)");
         }
 
         uart_puts("\n");

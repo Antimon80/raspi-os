@@ -21,7 +21,10 @@ typedef struct
  * List of task types that may be started from the shell.
  */
 static const startable_task_t startable_tasks[] = {
-    {"demo", demo_task},
+    {"heart", heartbeat_task},
+    {"fast", worker_fast_task},
+    {"slow", worker_slow_task},
+    {"burst", burst_task}
 };
 
 /*

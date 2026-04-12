@@ -50,14 +50,14 @@ static void joy_menu_cmd_ps(void)
     shell_cmd_ps();
 }
 
-static void joy_menu_cmd_start_demo(void)
+static void joy_menu_cmd_start_heartbeat(void)
 {
-    shell_cmd_start_arg("demo");
+    shell_cmd_start_arg("heart");
 }
 
-static void joy_menu_cmd_stop_demo(void)
+static void joy_menu_cmd_stop_heartbeat(void)
 {
-    shell_cmd_stop_arg("demo");
+    shell_cmd_stop_arg("heart");
 }
 
 /*
@@ -70,8 +70,8 @@ static const joy_menu_entry_t menu_entries[] =
 {
     { "help",       joy_menu_cmd_help },
     { "ps",         joy_menu_cmd_ps },
-    { "start demo", joy_menu_cmd_start_demo },
-    { "stop demo",  joy_menu_cmd_stop_demo }
+    { "start heart", joy_menu_cmd_start_heartbeat },
+    { "stop heart",  joy_menu_cmd_stop_heartbeat },
 };
 
 #define JOY_MENU_ITEMS ((int)(sizeof(menu_entries) / sizeof(menu_entries[0])))
