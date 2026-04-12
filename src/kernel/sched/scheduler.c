@@ -2,6 +2,7 @@
 #include "kernel/sched/task.h"
 #include "kernel/panic.h"
 #include "kernel/timer.h"
+#include "kernel/trace.h"
 #include "rpi4/uart.h"
 
 /*
@@ -211,6 +212,9 @@ void scheduler_yield(void)
     }
 
     next->state = RUNNING;
+
+    // record context switch for diagnostics
+    trace_record(TRACE_CTX_SWITCH, prev_id, next_id, 0);
     current_task_id = next_id;
 
     if (prev_id >= 0)
@@ -253,6 +257,7 @@ static void scheduler_task_exit(void)
     }
 
     task->state = DYING;
+    trace_record(TRACE_TASK_EXIT, id, -1, 0);
     scheduler_yield();
 
     kernel_panic("scheduler_task_exit: returned unexpectedly\n");
@@ -288,6 +293,7 @@ void task_sleep(uint64_t ticks)
 
     task->wakeup_tick = timer_get_ticks() + ticks;
     task->state = SLEEPING;
+    trace_record(TRACE_TASK_SLEEP, id, -1, (int)ticks);
 
     scheduler_yield();
 }

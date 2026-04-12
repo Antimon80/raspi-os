@@ -4,6 +4,7 @@
 #include "kernel/memory/heap.h"
 #include "kernel/memory/log.h"
 #include "kernel/tasks/demo_task.h"
+#include "kernel/trace.h"
 #include "rpi4/uart.h"
 #include "util/string.h"
 #include "util/convert.h"
@@ -152,6 +153,8 @@ void shell_cmd_help(void)
     uart_puts("  startable\n");
     uart_puts("  start <name>\n");
     uart_puts("  stop <id|name>\n");
+    uart_puts("  trace dump\n");
+    uart_puts("  trace clear\n");
 }
 
 /*
@@ -226,7 +229,7 @@ void shell_cmd_start_arg(const char *name)
 
     existing = shell_find_task_by_name(name);
 
-    if (existing > 0)
+    if (existing >= 0)
     {
         uart_puts("task already exists with id ");
         uart_put_uint((unsigned int)existing);
@@ -334,6 +337,67 @@ static void shell_cmd_log_clear_arg(const char *arg)
 }
 
 /*
+ * Dump all trace events to UART.
+ *
+ * Consumes the trace buffer and prints each event in order.
+ */
+static void shell_cmd_trace_dump(void)
+{
+    trace_event_t ev;
+
+    while (trace_pop(&ev) == 0)
+    {
+        uart_puts("[t=");
+        uart_put_uint((unsigned int)ev.tick);
+        uart_puts("] ");
+
+        switch (ev.type)
+        {
+        case TRACE_CTX_SWITCH:
+            uart_puts("switch ");
+            uart_put_uint((unsigned int)ev.from_task);
+            uart_puts(" -> ");
+            uart_put_uint((unsigned int)ev.to_task);
+            break;
+        case TRACE_TASK_SLEEP:
+            uart_puts("sleep ");
+            uart_put_uint((unsigned int)ev.from_task);
+            uart_puts(" ticks=");
+            uart_put_uint((unsigned int)ev.arg);
+            break;
+        case TRACE_TASK_WAKE:
+            uart_puts("wake ");
+            uart_put_uint((unsigned int)ev.from_task);
+            break;
+        case TRACE_TASK_STOP:
+            uart_puts("stop ");
+            uart_put_uint((unsigned int)ev.from_task);
+            uart_puts(" -> ");
+            uart_put_uint((unsigned int)ev.to_task);
+            break;
+        case TRACE_TASK_EXIT:
+            uart_puts("exit ");
+            uart_put_uint((unsigned int)ev.from_task);
+            break;
+        default:
+            uart_puts("unknown");
+            break;
+        }
+
+        uart_puts("\n");
+    }
+}
+
+/*
+ * Clear the trace buffer.
+ */
+static void shell_cmd_trace_clear(void)
+{
+    trace_clear();
+    uart_puts("trace cleared\n");
+}
+
+/*
  * Execute one shell command line.
  */
 static void shell_execute_command(char *cmd)
@@ -373,6 +437,14 @@ static void shell_execute_command(char *cmd)
     else if (str_starts_with(cmd, "log "))
     {
         shell_cmd_log_arg(cmd + 4);
+    }
+    else if (str_equals(cmd, "trace dump"))
+    {
+        shell_cmd_trace_dump();
+    }
+    else if (str_equals(cmd, "trace clear"))
+    {
+        shell_cmd_trace_clear();
     }
     else
     {

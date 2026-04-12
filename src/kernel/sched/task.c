@@ -1,5 +1,7 @@
 #include "kernel/sched/task.h"
+#include "kernel/sched/scheduler.h"
 #include "kernel/memory/log.h"
+#include "kernel/trace.h"
 #include "util/string.h"
 
 /*
@@ -148,6 +150,7 @@ int task_request_stop(int id)
     }
 
     task->state = DYING;
+    trace_record(TRACE_TASK_STOP, scheduler_current_task_id(), id, 0);
     return 0;
 }
 
