@@ -83,8 +83,9 @@ void burst_task(void)
         {
             for (volatile int j = 0; j < 50000; j++)
             {
-                log_append_current_task("burst: sleep\n", 0);
-            }
+                        }
+            log_append_current_task("burst: sleep\n", 0);
+            task_sleep(200);
         }
     }
 }
