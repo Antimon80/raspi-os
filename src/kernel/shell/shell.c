@@ -337,7 +337,7 @@ static void shell_cmd_log_clear_arg(const char *arg)
  *
  * Consumes the trace buffer and prints each event in order.
  */
-static void shell_cmd_trace_dump(void)
+void shell_cmd_trace_dump(void)
 {
     trace_event_t ev;
 

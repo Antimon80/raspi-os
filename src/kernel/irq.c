@@ -1,7 +1,9 @@
 #include "kernel/irq.h"
 #include "kernel/timer.h"
+#include "kernel/deferred_work.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/tasks/joystick_task.h"
+#include "kernel/tasks/deferred_worker_task.h"
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
@@ -41,29 +43,40 @@
  * VC IRQ 29 → GIC SPI 96 + 29 = 125
  *
  * Generic timer: PPI 30
+ * GPIO bank 0 interrupt:
+ * VC IRQ 49 -> GIC SPI 96 + 49 = 145
+ * GPIO23 belongs to bank 0.
  */
 #define UART1_GIC_INTID 125
 #define TIMER_GIC_INTID 30
-#define GPIO_GIC_INTID 49
+#define GPIO0_GIC_INTID 145
 
-volatile uint32_t joystick_irq_count = 0;
+static void joystick_deferred_work(void *arg)
+{
+    (void)arg;
+    joystick_service_change();
+}
 
 static void handle_gpio_irq(void)
 {
-    uart_puts("GPIO IRQ\n");
+    int worker_id;
 
-    if (gpio_event_detected(JOYSTICK_INT_GPIO))
+    if (!gpio_event_detected(JOYSTICK_INT_GPIO))
     {
-        uart_puts("GPIO EVENT\n");
+        return;
+    }
 
-        gpio_clear_event(JOYSTICK_INT_GPIO);
-        joystick_irq_count++;
+    gpio_clear_event(JOYSTICK_INT_GPIO);
 
-        int id = joystick_get_task_id();
-        if (id >= 0)
-        {
-            task_wakeup(id);
-        }
+    if (deferred_work_schedule(joystick_deferred_work, 0) < 0)
+    {
+        return;
+    }
+
+    worker_id = deferred_worker_get_task_id();
+    if (worker_id >= 0)
+    {
+        task_wakeup(worker_id);
     }
 }
 
@@ -132,28 +145,28 @@ void gic_init(void)
     // GPIO interrupt
     // --------------------
 
-    bit = 1u << (GPIO_GIC_INTID % 32);
-    shift = (GPIO_GIC_INTID % 4) * 8;
+    bit = 1u << (GPIO0_GIC_INTID % 32);
+    shift = (GPIO0_GIC_INTID % 4) * 8;
 
     // put GPIO interrupt into Group 1
-    reg = mmio_read(GICD_IGROUPR(GPIO_GIC_INTID / 32));
+    reg = mmio_read(GICD_IGROUPR(GPIO0_GIC_INTID / 32));
     reg |= bit;
-    mmio_write(GICD_IGROUPR(GPIO_GIC_INTID / 32), reg);
+    mmio_write(GICD_IGROUPR(GPIO0_GIC_INTID / 32), reg);
 
     // set priority
-    reg = mmio_read(GICD_IPRIORITYR(GPIO_GIC_INTID));
+    reg = mmio_read(GICD_IPRIORITYR(GPIO0_GIC_INTID));
     reg &= ~(0xFFu << shift);
     reg |= (0x90u << shift);
-    mmio_write(GICD_IPRIORITYR(GPIO_GIC_INTID), reg);
+    mmio_write(GICD_IPRIORITYR(GPIO0_GIC_INTID), reg);
 
     // route to CPU
-    reg = mmio_read(GICD_ITARGETSR(GPIO_GIC_INTID));
+    reg = mmio_read(GICD_ITARGETSR(GPIO0_GIC_INTID));
     reg &= ~(0xFFu << shift);
     reg |= (0x01u << shift);
-    mmio_write(GICD_ITARGETSR(GPIO_GIC_INTID), reg);
+    mmio_write(GICD_ITARGETSR(GPIO0_GIC_INTID), reg);
 
     // enable
-    mmio_write(GICD_ISENABLER(GPIO_GIC_INTID / 32), bit);
+    mmio_write(GICD_ISENABLER(GPIO0_GIC_INTID / 32), bit);
 
     // allow all priorities
     mmio_write(GICC_PMR, 0xFF);
@@ -182,9 +195,8 @@ void handle_irq(void)
     {
         timer_handle_tick();
     }
-    else if (intid == GPIO_GIC_INTID)
+    else if (intid == GPIO0_GIC_INTID)
     {
-        uart_puts("GPIO INTID matched\n");
         handle_gpio_irq();
     }
     else

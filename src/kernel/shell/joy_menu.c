@@ -60,6 +60,26 @@ static void joy_menu_cmd_stop_heartbeat(void)
     shell_cmd_stop_arg("heart");
 }
 
+static void joy_menu_cmd_start_fast(void)
+{
+    shell_cmd_start_arg("fast");
+}
+
+static void joy_menu_cmd_stop_fast(void)
+{
+    shell_cmd_stop_arg("fast");
+}
+
+static void joy_menu_cmd_start_slow(void)
+{
+    shell_cmd_start_arg("slow");
+}
+
+static void joy_menu_cmd_stop_slow(void)
+{
+    shell_cmd_stop_arg("slow");
+}
+
 /*
  * Static list of menu entries.
  *
@@ -67,11 +87,16 @@ static void joy_menu_cmd_stop_heartbeat(void)
  * should be executed when selected.
  */
 static const joy_menu_entry_t menu_entries[] =
-{
-    { "help",       joy_menu_cmd_help },
-    { "ps",         joy_menu_cmd_ps },
-    { "start heart", joy_menu_cmd_start_heartbeat },
-    { "stop heart",  joy_menu_cmd_stop_heartbeat },
+    {
+        {"help", joy_menu_cmd_help},
+        {"ps", joy_menu_cmd_ps},
+        {"start heart", joy_menu_cmd_start_heartbeat},
+        {"stop heart", joy_menu_cmd_stop_heartbeat},
+        {"start fast", joy_menu_cmd_start_fast},
+        {"stop fast", joy_menu_cmd_stop_fast},
+        {"start slow", joy_menu_cmd_start_slow},
+        {"stop slow", joy_menu_cmd_stop_slow},
+        {"trace dump", shell_cmd_trace_dump},
 };
 
 #define JOY_MENU_ITEMS ((int)(sizeof(menu_entries) / sizeof(menu_entries[0])))

@@ -1,3 +1,6 @@
+#include "kernel/irq.h"
+#include "kernel/tasks/joystick_task.h"
+#include "kernel/sched/scheduler.h"
 #include "sensehat/joystick.h"
 #include "rpi4/i2c.h"
 #include "rpi4/gpio.h"
@@ -17,6 +20,8 @@
 #define JOY_BIT_CENTER (1u << 3)
 #define JOY_BIT_LEFT (1u << 4)
 
+#define JOY_EVENT_QUEUE_SIZE 16
+
 /*
  * Last sampled joystick state.
  *
@@ -25,14 +30,64 @@
  */
 static uint8_t joystick_prev_state = 0;
 
+static joy_event_t joystick_event_queue[JOY_EVENT_QUEUE_SIZE];
+static volatile uint32_t joystick_event_head = 0;
+static volatile uint32_t joystick_event_tail = 0;
+
+static int joystick_queue_is_empty(void)
+{
+    return joystick_event_head == joystick_event_tail;
+}
+
+static int joystick_queue_is_full(void)
+{
+    return ((joystick_event_head + 1) % JOY_EVENT_QUEUE_SIZE) == joystick_event_tail;
+}
+
+static void joystick_enqueue_event(joy_event_t event)
+{
+    unsigned int next;
+    int id;
+
+    if (event == JOY_EVENT_NONE)
+    {
+        return;
+    }
+
+    irq_disable();
+
+    if (joystick_queue_is_full())
+    {
+        irq_enable();
+        return;
+    }
+
+    joystick_event_queue[joystick_event_head] = event;
+    next = (joystick_event_head + 1u) % JOY_EVENT_QUEUE_SIZE;
+    joystick_event_head = next;
+
+    irq_enable();
+
+    id = joystick_get_task_id();
+    if (id >= 0)
+    {
+        task_wakeup(id);
+    }
+}
+
 /*
  * Configure GPIO23 as joystick interrupt input.
  *
  * The Sense HAT signals a joystick state change on this pin.
  */
-static void joystick_init_interrupt(void){
+static void joystick_init_interrupt(void)
+{
     gpio_use_as_input(JOYSTICK_INT_GPIO);
-    
+
+    gpio_disable_rising_edge(JOYSTICK_INT_GPIO);
+    gpio_disable_falling_edge(JOYSTICK_INT_GPIO);
+    gpio_clear_event(JOYSTICK_INT_GPIO);
+
     gpio_enable_rising_edge(JOYSTICK_INT_GPIO);
     gpio_enable_falling_edge(JOYSTICK_INT_GPIO);
 
@@ -93,6 +148,22 @@ static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
     return JOY_EVENT_NONE;
 }
 
+void joystick_service_change(void)
+{
+    uint8_t state;
+    joy_event_t event;
+
+    if (i2c_read_reg8(SENSEHAT_ADDR, SENSEHAT_KEYS_REG, &state) < 0)
+    {
+        return;
+    }
+
+    event = joystick_decode_event(joystick_prev_state, state),
+    joystick_prev_state = state;
+
+    joystick_enqueue_event(event);
+}
+
 /*
  * Initialize the joystick driver.
  *
@@ -105,12 +176,23 @@ int joystick_init(void)
     i2c_init();
     joystick_init_interrupt();
 
+    joystick_event_head = 0;
+    joystick_event_tail = 0;
+
     if (i2c_read_reg8(SENSEHAT_ADDR, SENSEHAT_KEYS_REG, &joystick_prev_state) < 0)
     {
         return -1;
     }
 
     return 0;
+}
+
+/*
+ * Return 1 if at least one decoded joystick event is queued.
+ */
+int joystick_has_event(void)
+{
+    return !joystick_queue_is_empty();
 }
 
 /*
@@ -121,16 +203,19 @@ int joystick_init(void)
  */
 joy_event_t joystick_read_event(void)
 {
-    uint8_t state;
     joy_event_t event;
 
-    if (i2c_read_reg8(SENSEHAT_ADDR, SENSEHAT_KEYS_REG, &state) < 0)
+    irq_disable();
+
+    if (joystick_queue_is_empty())
     {
+        irq_enable();
         return JOY_EVENT_NONE;
     }
 
-    event = joystick_decode_event(joystick_prev_state, state);
-    joystick_prev_state = state;
+    event = joystick_event_queue[joystick_event_tail];
+    joystick_event_tail = (joystick_event_tail + 1u) % JOY_EVENT_QUEUE_SIZE;
 
+    irq_enable();
     return event;
 }
