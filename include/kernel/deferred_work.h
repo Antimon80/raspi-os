@@ -4,7 +4,8 @@
 typedef void(*deferred_work_fn_t)(void *arg);
 
 void deferred_work_init(void);
-int deferred_work_schedule(deferred_work_fn_t, void *arg);
+int deferred_work_schedule(deferred_work_fn_t fn, void *arg);
+int deferred_work_schedule_irq(deferred_work_fn_t fn, void *arg);
 int deferred_work_has_items(void);
 void deferred_work_run_next(void);
 

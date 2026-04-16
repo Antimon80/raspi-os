@@ -41,10 +41,29 @@ int deferred_work_schedule(deferred_work_fn_t fn, void *arg){
     }
 
     queue[head].fn = fn;
-    queue[tail].arg = arg;
+    queue[head].arg = arg;
     head = next;
 
     irq_enable();
+    return 0;
+}
+
+int deferred_work_schedule_irq(deferred_work_fn_t fn, void *arg){
+    unsigned next;
+    
+    if(!fn){
+        return -1;
+    }
+
+    next = next_index(head);
+    if(next == tail){
+        return -1;
+    }
+
+    queue[head].fn = fn;
+    queue[head].arg = arg;
+    head = next;
+
     return 0;
 }
 

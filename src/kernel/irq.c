@@ -68,7 +68,7 @@ static void handle_gpio_irq(void)
 
     gpio_clear_event(JOYSTICK_INT_GPIO);
 
-    if (deferred_work_schedule(joystick_deferred_work, 0) < 0)
+    if (deferred_work_schedule_irq(joystick_deferred_work, 0) < 0)
     {
         return;
     }
