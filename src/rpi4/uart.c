@@ -219,6 +219,14 @@ void uart_put_hex_uintptr(uintptr_t value)
     uart_puts(buffer);
 }
 
+void uart_put_hex8(uint8_t value)
+{
+    const char *hex = "0123456789ABCDEF";
+    uart_puts("0x");
+    uart_putc(hex[(value >> 4) & 0xF]);
+    uart_putc(hex[value & 0xF]);
+}
+
 /*
  * UART interrupt handler.
  *

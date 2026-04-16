@@ -15,8 +15,6 @@ extern void task_bootstrap(void);
 /* Global task table (statically allocated). */
 static task_t tasks[MAX_TASKS];
 
-
-
 /* Reset a task slot to the UNUSED state. */
 static void task_clear(task_t *task)
 {
@@ -26,6 +24,7 @@ static void task_clear(task_t *task)
     }
 
     task->state = UNUSED;
+    task->flag = 0;
     task->sp = 0;
     task->entry = 0;
     task->wakeup_tick = 0;
@@ -73,7 +72,7 @@ task_t *task_get(int id)
  *   task ID on success
  *  -1 if no free slot is available or entry is NULL
  */
-int task_create(void (*entry)(void), const char *name)
+int task_create(void (*entry)(void), const char *name, uint32_t flag)
 {
     if (!entry)
     {
@@ -88,6 +87,7 @@ int task_create(void (*entry)(void), const char *name)
 
             task->entry = entry;
             task->state = READY;
+            task->flag = flag;
             task->wakeup_tick = 0;
             str_copy(task->name, name, TASK_NAME_LEN);
 
@@ -125,6 +125,11 @@ int task_create(void (*entry)(void), const char *name)
     }
 
     return -1;
+}
+
+int task_create_system(void (*entry)(void), const char *name)
+{
+    return task_create(entry, name, TASK_FLAG_SYSTEM);
 }
 
 /*

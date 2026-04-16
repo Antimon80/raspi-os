@@ -6,6 +6,7 @@
 #define MAX_TASKS 8
 #define TASK_STACK_SIZE 4096
 #define TASK_NAME_LEN 16
+#define TASK_FLAG_SYSTEM (1u << 0)
 
 typedef enum {
     UNUSED = 0,
@@ -19,6 +20,7 @@ typedef enum {
 typedef struct task {
     int id;
     task_state_t state;
+    uint32_t flag;
     uint64_t *sp;
     void(*entry)(void);
     uint64_t wakeup_tick;
@@ -29,7 +31,8 @@ typedef struct task {
 void task_init_system(void);
 task_t *task_get(int id);
 
-int task_create(void (*entry)(void), const char *name);
+int task_create(void (*entry)(void), const char *name, uint32_t flag);
+int task_create_system(void (*entry)(void), const char *name);
 int task_request_stop(int id);
 void task_reap_dying(int exclude_id);
 

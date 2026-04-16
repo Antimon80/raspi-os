@@ -32,7 +32,10 @@ static uint8_t joystick_prev_state = 0;
  */
 static void joystick_init_interrupt(void){
     gpio_use_as_input(JOYSTICK_INT_GPIO);
+    
     gpio_enable_rising_edge(JOYSTICK_INT_GPIO);
+    gpio_enable_falling_edge(JOYSTICK_INT_GPIO);
+
     gpio_clear_event(JOYSTICK_INT_GPIO);
 }
 

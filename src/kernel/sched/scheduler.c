@@ -84,7 +84,7 @@ static void idle_task(void)
 void scheduler_init(void)
 {
     current_task_id = -1;
-    idle_task_id = task_create(idle_task, "idle");
+    idle_task_id = task_create_system(idle_task, "idle");
 
     if (idle_task_id < 0)
     {

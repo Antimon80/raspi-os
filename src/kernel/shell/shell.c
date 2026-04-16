@@ -24,8 +24,7 @@ static const startable_task_t startable_tasks[] = {
     {"heart", heartbeat_task},
     {"fast", worker_fast_task},
     {"slow", worker_slow_task},
-    {"burst", burst_task}
-};
+    {"burst", burst_task}};
 
 /*
  * Print a textual representation of a task state.
@@ -240,7 +239,7 @@ void shell_cmd_start_arg(const char *name)
         return;
     }
 
-    id = task_create(entry->entry, entry->name);
+    id = task_create(entry->entry, entry->name, 0);
 
     if (id < 0)
     {
@@ -267,15 +266,9 @@ void shell_cmd_stop_id(int id)
         return;
     }
 
-    if (str_equals(task->name, "shell"))
+    if (task->flag & TASK_FLAG_SYSTEM)
     {
-        uart_puts("refusing to stop shell task\n");
-        return;
-    }
-
-    if (str_equals(task->name, "idle"))
-    {
-        uart_puts("refusing to stop idle task\n");
+        uart_puts("refusing to stop system task\n");
         return;
     }
 

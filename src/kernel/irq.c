@@ -1,5 +1,7 @@
 #include "kernel/irq.h"
 #include "kernel/timer.h"
+#include "kernel/sched/scheduler.h"
+#include "kernel/tasks/joystick_task.h"
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
@@ -44,12 +46,24 @@
 #define TIMER_GIC_INTID 30
 #define GPIO_GIC_INTID 49
 
-volatile int joystick_pending = 0;
+volatile uint32_t joystick_irq_count = 0;
 
-static void handle_gpio_irq(void){
-    if(gpio_event_detected(JOYSTICK_INT_GPIO)){
+static void handle_gpio_irq(void)
+{
+    uart_puts("GPIO IRQ\n");
+
+    if (gpio_event_detected(JOYSTICK_INT_GPIO))
+    {
+        uart_puts("GPIO EVENT\n");
+
         gpio_clear_event(JOYSTICK_INT_GPIO);
-        joystick_pending = 1;
+        joystick_irq_count++;
+
+        int id = joystick_get_task_id();
+        if (id >= 0)
+        {
+            task_wakeup(id);
+        }
     }
 }
 
@@ -170,7 +184,14 @@ void handle_irq(void)
     }
     else if (intid == GPIO_GIC_INTID)
     {
+        uart_puts("GPIO INTID matched\n");
         handle_gpio_irq();
+    }
+    else
+    {
+        uart_puts("Unhandled IRQ intid=");
+        uart_put_uint((unsigned int)intid);
+        uart_puts("\n");
     }
 
     // signal end of interrupt to GIC
