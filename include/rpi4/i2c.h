@@ -16,5 +16,6 @@ int i2c_write_read(uint8_t addr,
 
 int i2c_write_reg8(uint8_t addr, uint8_t reg, uint8_t value);
 int i2c_read_reg8(uint8_t addr, uint8_t reg, uint8_t *value);
+void i2c_handle_irq(void);
 
 #endif

@@ -6,7 +6,7 @@ void heartbeat_task(void)
 {
     int counter = 0;
 
-    log_append_current_task("heartbeat task started", counter);
+    log_append_current_task("heartbeat task started ", counter);
 
     while (1)
     {
@@ -14,12 +14,12 @@ void heartbeat_task(void)
 
         if (counter == 1)
         {
-            log_append_current_task("heartbeat loop entered", counter);
+            log_append_current_task("heartbeat loop entered ", counter);
         }
 
         if ((counter % 10) == 0)
         {
-            log_append_current_task("heartbeat heartbeat", counter);
+            log_append_current_task("heartbeat heartbeat ", counter);
         }
 
         task_sleep(100);
@@ -38,7 +38,7 @@ void worker_fast_task(void)
 
             if (counter % 50 == 0)
             {
-                log_append_current_task("worker_fast: %d\n", counter);
+                log_append_current_task("worker_fast: ", counter);
             }
 
             scheduler_yield();
@@ -58,7 +58,7 @@ void worker_slow_task(void)
 
             if (counter % 10 == 0)
             {
-                log_append_current_task("worker_slow: %d\n", counter);
+                log_append_current_task("worker_slow: ", counter);
             }
 
             if (counter % 20 == 0)
@@ -77,7 +77,7 @@ void burst_task(void)
     {
         round++;
 
-        log_append_current_task("burst: start round %d\n", round);
+        log_append_current_task("burst: start round ", round);
 
         for (int i = 0; i < 5; i++)
         {

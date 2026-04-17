@@ -1,9 +1,7 @@
 #include "kernel/irq.h"
 #include "kernel/timer.h"
-#include "kernel/deferred_work.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/tasks/joystick_task.h"
-#include "kernel/tasks/deferred_worker_task.h"
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
@@ -51,76 +49,23 @@
 #define TIMER_GIC_INTID 30
 #define GPIO0_GIC_INTID 145
 
-static volatile int joystick_work_pending = 0;
-static volatile int joystick_irq_enabled = 0;
-
-static void joystick_deferred_work(void *arg)
-{
-    (void)arg;
-
-    while (1)
-    {
-        irq_disable();
-
-        if (!joystick_work_pending)
-        {
-            irq_enable();
-            break;
-        }
-
-        joystick_work_pending = 0;
-        irq_enable();
-
-        joystick_service_change();
-    }
-}
-
 static void handle_gpio_irq(void)
 {
-    int worker_id;
+    int joystick_id;
 
     if (!gpio_event_detected(JOYSTICK_INT_GPIO))
     {
         return;
     }
 
+    uart_puts("gpio23 irq\n");
     gpio_clear_event(JOYSTICK_INT_GPIO);
-    joystick_irq_set_enabled(1);
 
-    if (!joystick_irq_enabled)
+    joystick_id = joystick_get_task_id();
+    if (joystick_id >= 0)
     {
-        return;
+        task_wakeup(joystick_id);
     }
-
-    irq_disable();
-    if (!joystick_work_pending)
-    {
-        joystick_work_pending = 1;
-        irq_enable();
-
-        if (deferred_work_schedule_irq(joystick_deferred_work, 0) < 0)
-        {
-            irq_disable();
-            joystick_work_pending = 0;
-            irq_enable();
-            return;
-        }
-    }
-    else
-    {
-        irq_enable();
-    }
-
-    worker_id = deferred_worker_get_task_id();
-    if (worker_id >= 0)
-    {
-        task_wakeup(worker_id);
-    }
-}
-
-void joystick_irq_set_enabled(int enabled)
-{
-    joystick_irq_enabled = enabled ? 1 : 0;
 }
 
 /*

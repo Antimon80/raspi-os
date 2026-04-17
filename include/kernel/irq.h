@@ -14,7 +14,6 @@ void irq_barrier(void);
 
 void gic_init(void);
 void handle_irq(void);
-void joystick_irq_set_enabled(int enabled);
 void exception_debug(void);
 
 #endif

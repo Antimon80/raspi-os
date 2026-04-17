@@ -4,6 +4,7 @@
 #include "sensehat/joystick.h"
 #include "rpi4/i2c.h"
 #include "rpi4/gpio.h"
+#include "rpi4/uart.h"
 
 /*
  * Sense HAT controller I2C address and joystick state register.
@@ -89,8 +90,6 @@ static void joystick_init_interrupt(void)
     gpio_clear_event(JOYSTICK_INT_GPIO);
 
     gpio_enable_rising_edge(JOYSTICK_INT_GPIO);
-    gpio_enable_falling_edge(JOYSTICK_INT_GPIO);
-
     gpio_clear_event(JOYSTICK_INT_GPIO);
 }
 
@@ -153,12 +152,19 @@ void joystick_service_change(void)
     uint8_t state;
     joy_event_t event;
 
+    uart_puts("joy service\n");
+
     if (i2c_read_reg8(SENSEHAT_ADDR, SENSEHAT_KEYS_REG, &state) < 0)
     {
+        uart_puts("joystick: i2c read failed\n");
         return;
     }
 
-    event = joystick_decode_event(joystick_prev_state, state),
+    uart_puts("joy state");
+    uart_put_uint(state);
+    uart_puts("\n");
+
+    event = joystick_decode_event(joystick_prev_state, state);
     joystick_prev_state = state;
 
     joystick_enqueue_event(event);

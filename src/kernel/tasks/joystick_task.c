@@ -19,8 +19,6 @@ int joystick_get_task_id(void)
 
 void joystick_task(void)
 {
-    joystick_irq_set_enabled(0);
-
     if (joystick_init() < 0)
     {
         uart_puts("joystick init failed\n");
@@ -30,30 +28,28 @@ void joystick_task(void)
         }
     }
 
-    joystick_irq_set_enabled(1);
-
     joy_menu_init();
 
     while (1)
     {
         joy_event_t ev;
 
-        irq_disable();
+        // Sleep until GPIO IRQ wakes this task
+        task_block_current_no_yield();
+        scheduler_yield();
 
-        if (!joystick_has_event())
+        // One threaded-botto-half pass:
+        // reas 0xF2, decode state change, enqueue resulting event
+        joystick_service_change();
+
+        // Drain all queued logical events
+        while (joystick_has_event())
         {
-            task_block_current_no_yield();
-            irq_enable();
-            scheduler_yield();
-            continue;
-        }
-
-        ev = joystick_read_event();
-        irq_enable();
-
-        if (ev != JOY_EVENT_NONE)
-        {
-            joy_menu_handle_event(ev);
+            ev = joystick_read_event();
+            if (ev != JOY_EVENT_NONE)
+            {
+                joy_menu_handle_event(ev);
+            }
         }
 
         scheduler_yield();
