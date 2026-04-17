@@ -285,8 +285,6 @@ void scheduler_yield(void)
     next->state = RUNNING;
     current_task_id = next_id;
 
-    irq_enable();
-
     trace_record(TRACE_CTX_SWITCH, prev_id, next_id, 0);
 
     if (prev_id >= 0)
@@ -298,6 +296,8 @@ void scheduler_yield(void)
         uint64_t *unused_old_sp = 0;
         context_switch(&unused_old_sp, next->sp);
     }
+
+    irq_enable();
 }
 
 /*

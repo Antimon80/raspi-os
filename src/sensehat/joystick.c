@@ -35,16 +35,36 @@ static joy_event_t joystick_event_queue[JOY_EVENT_QUEUE_SIZE];
 static volatile uint32_t joystick_event_head = 0;
 static volatile uint32_t joystick_event_tail = 0;
 
+/*
+ * Return non-zero if the event queue is empty.
+ *
+ * Used to check whether a task needs to block waiting for input.
+ */
 static int joystick_queue_is_empty(void)
 {
     return joystick_event_head == joystick_event_tail;
 }
 
+/*
+ * Return non-zero if the event queue is full.
+ *
+ * Prevents overwriting unread events in the circular buffer.
+ */
 static int joystick_queue_is_full(void)
 {
     return ((joystick_event_head + 1) % JOY_EVENT_QUEUE_SIZE) == joystick_event_tail;
 }
 
+/*
+ * Enqueue a decoded joystick event.
+ *
+ * This function:
+ * - drops JOY_EVENT_NONE
+ * - inserts the event into the circular buffer
+ * - wakes up the joystick task if one is registered
+ *
+ * Must be IRQ-safe because it may be called from interrupt context.
+ */
 static void joystick_enqueue_event(joy_event_t event)
 {
     unsigned int next;
@@ -147,22 +167,24 @@ static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
     return JOY_EVENT_NONE;
 }
 
+/*
+ * Poll the joystick state over I2C and generate an event if needed.
+ *
+ * This reads the current state register, compares it with the previous
+ * state, decodes a single event and enqueues it.
+ *
+ * Called when a GPIO interrupt signals a state change.
+ */
 void joystick_service_change(void)
 {
     uint8_t state;
     joy_event_t event;
-
-    uart_puts("joy service\n");
 
     if (i2c_read_reg8(SENSEHAT_ADDR, SENSEHAT_KEYS_REG, &state) < 0)
     {
         uart_puts("joystick: i2c read failed\n");
         return;
     }
-
-    uart_puts("joy state");
-    uart_put_uint(state);
-    uart_puts("\n");
 
     event = joystick_decode_event(joystick_prev_state, state);
     joystick_prev_state = state;
@@ -194,7 +216,9 @@ int joystick_init(void)
 }
 
 /*
- * Return 1 if at least one decoded joystick event is queued.
+ * Return non-zero if at least one joystick event is available.
+ *
+ * Can be used by tasks to decide whether to read or block.
  */
 int joystick_has_event(void)
 {
@@ -202,10 +226,12 @@ int joystick_has_event(void)
 }
 
 /*
- * Read the current joystick state and convert it into one event.
+ * Dequeue and return the next joystick event.
  *
- * Returns JOY_EVENT_NONE if no relevant state transition occurred
- * or if the I2C read failed.
+ * Returns JOY_EVENT_NONE if the queue is empty.
+ *
+ * Access to the circular buffer is protected by disabling IRQs
+ * to avoid race conditions with interrupt-driven producers.
  */
 joy_event_t joystick_read_event(void)
 {

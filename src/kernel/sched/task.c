@@ -2,6 +2,7 @@
 #include "kernel/sched/scheduler.h"
 #include "kernel/memory/log.h"
 #include "kernel/trace.h"
+#include "kernel/irq.h"
 #include "util/string.h"
 
 /*
@@ -149,8 +150,17 @@ int task_request_stop(int id)
         return -1;
     }
 
+    irq_disable();
+
     if (task->state == UNUSED || task->state == DYING)
     {
+        irq_enable();
+        return -1;
+    }
+
+    if (task->flag & TASK_FLAG_SYSTEM)
+    {
+        irq_enable();
         return -1;
     }
 

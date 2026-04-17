@@ -5,6 +5,7 @@
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
+#include "rpi4/i2c.h"
 #include "sensehat/joystick.h"
 
 /*
@@ -37,18 +38,91 @@
 #define GICC_EOIR (GICC_BASE + 0x010) // end of interrupt
 
 /*
- * UART1 (Mini UART) interrupt:
- * VC IRQ 29 → GIC SPI 96 + 29 = 125
+ * Interrupt IDs currently used by the kernel.
  *
+ * UART1 (Mini UART): VC IRQ 29 -> GIC SPI 96 + 29 = 125
  * Generic timer: PPI 30
- * GPIO bank 0 interrupt:
- * VC IRQ 49 -> GIC SPI 96 + 49 = 145
- * GPIO23 belongs to bank 0.
+ * GPIO bank 0: VC IRQ 49 -> GIC SPI 96 + 49 = 145
+ *
+ * I2C1 / BSC1:
+ * Keep this as a single macro so the mapping can be adjusted easily
+ * if your board/setup uses a different routed interrupt ID.
  */
 #define UART1_GIC_INTID 125
 #define TIMER_GIC_INTID 30
 #define GPIO0_GIC_INTID 145
+#define I2C1_GIC_INTID 117
 
+/*
+ * Enable a shared peripheral interrupt (SPI) in the GIC distributor.
+ *
+ * This configures the interrupt as Group 1, assigns its priority,
+ * routes it to CPU0 and enables it in the distributor.
+ *
+ * Used for device interrupts such as UART, GPIO and I2C.
+ */
+static void gic_enable_spi_irq(uint32_t intid, uint8_t priority)
+{
+    uint32_t bit = 1u << (intid % 32);
+    uint32_t shift = (intid % 4) * 8;
+    uint32_t reg;
+
+    // put interrupt into Group 1 (normal IRQ in EL1)
+    reg = mmio_read(GICD_IGROUPR(intid / 32));
+    reg |= bit;
+    mmio_write(GICD_IGROUPR(intid / 32), reg);
+
+    // set priority (8-bit field inside 32-bit word)
+    reg = mmio_read(GICD_IPRIORITYR(intid));
+    reg &= ~(0xFFu << shift);
+    reg |= ((uint32_t)priority << shift);
+    mmio_write(GICD_IPRIORITYR(intid), reg);
+
+    // route SPI to CPU0
+    reg = mmio_read(GICD_ITARGETSR(intid));
+    reg &= ~(0xFFu << shift);
+    reg |= (0x01u << shift);
+    mmio_write(GICD_ITARGETSR(intid), reg);
+
+    // enable interrupt
+    mmio_write(GICD_ISENABLER(intid / 32), bit);
+}
+
+/*
+ * Enable a private peripheral interrupt (PPI) in the GIC distributor.
+ *
+ * This configures the interrupt as Group 1, assigns its priority
+ * and enables it for the current CPU interface.
+ *
+ * Used for per-core interrupts such as the generic timer.
+ */
+static void gic_enable_ppi_irq(uint32_t intid, uint8_t priority)
+{
+    uint32_t bit = 1u << (intid % 32);
+    uint32_t shift = (intid % 4) * 8;
+    uint32_t reg;
+
+    // put interrupt into Group 1
+    reg = mmio_read(GICD_IGROUPR(intid / 32));
+    reg |= bit;
+    mmio_write(GICD_IGROUPR(intid / 32), reg);
+
+    // set priority
+    reg = mmio_read(GICD_IPRIORITYR(intid));
+    reg &= ~(0xFFu << shift);
+    reg |= ((uint32_t)priority << shift);
+    mmio_write(GICD_IPRIORITYR(intid), reg);
+
+    // enable interrupt
+    mmio_write(GICD_ISENABLER(intid / 32), bit);
+}
+
+/*
+ * Handle a GPIO bank 0 interrupt caused by the Sense HAT joystick.
+ *
+ * If the configured joystick interrupt GPIO has a pending event,
+ * the event flag is cleared and the joystick task is woken up.
+ */
 static void handle_gpio_irq(void)
 {
     int joystick_id;
@@ -58,7 +132,6 @@ static void handle_gpio_irq(void)
         return;
     }
 
-    uart_puts("gpio23 irq\n");
     gpio_clear_event(JOYSTICK_INT_GPIO);
 
     joystick_id = joystick_get_task_id();
@@ -73,88 +146,20 @@ static void handle_gpio_irq(void)
  *  - Mini UART receive interrupt
  *  - Generic timer interrupt
  *  - GPIO interrupt
+ *  - I2C1 / BSC1 interrupt
  */
 void gic_init(void)
 {
-    uint32_t bit = 1u << (UART1_GIC_INTID % 32);
-    uint32_t reg;
-    uint32_t shift = (UART1_GIC_INTID % 4) * 8;
-
     // disable distributor during setup
     mmio_write(GICD_CTLR, 0);
 
-    // --------------------
-    // UART interrupt
-    // --------------------
+    // SPI interrupts
+    gic_enable_spi_irq(UART1_GIC_INTID, 0x80);
+    gic_enable_spi_irq(GPIO0_GIC_INTID, 0x90);
+    gic_enable_spi_irq(I2C1_GIC_INTID, 0x91);
 
-    // put interrupt into Group 1 (normal IRQ in EL1)
-    reg = mmio_read(GICD_IGROUPR(UART1_GIC_INTID / 32));
-    reg |= bit;
-    mmio_write(GICD_IGROUPR(UART1_GIC_INTID / 32), reg);
-
-    // set priority (8-bit field inside 32-bit word)
-    reg = mmio_read(GICD_IPRIORITYR(UART1_GIC_INTID));
-    reg &= ~(0xFFu << shift);
-    reg |= (0x80u << shift);
-    mmio_write(GICD_IPRIORITYR(UART1_GIC_INTID), reg);
-
-    // route interrupt to CPU0
-    reg = mmio_read(GICD_ITARGETSR(UART1_GIC_INTID));
-    reg &= ~(0xFFu << shift);
-    reg |= (0x01u << shift);
-    mmio_write(GICD_ITARGETSR(UART1_GIC_INTID), reg);
-
-    // enable interrupt
-    mmio_write(GICD_ISENABLER(UART1_GIC_INTID / 32), bit);
-
-    // --------------------
-    // timer interrupt
-    // --------------------
-
-    // generic timer interrupt setup (PPI 30)
-    bit = 1u << (TIMER_GIC_INTID % 32);
-    shift = (TIMER_GIC_INTID % 4) * 8;
-
-    // put timer interrupt into Group 1
-    reg = mmio_read(GICD_IGROUPR(TIMER_GIC_INTID / 32));
-    reg |= bit;
-    mmio_write(GICD_IGROUPR(TIMER_GIC_INTID / 32), reg);
-
-    // set timer interrupt priority
-    reg = mmio_read(GICD_IPRIORITYR(TIMER_GIC_INTID));
-    reg &= ~(0xFFu << shift);
-    reg |= (0x88u << shift);
-    mmio_write(GICD_IPRIORITYR(TIMER_GIC_INTID), reg);
-
-    // enable timer interrupt
-    mmio_write(GICD_ISENABLER(TIMER_GIC_INTID / 32), bit);
-
-    // --------------------
-    // GPIO interrupt
-    // --------------------
-
-    bit = 1u << (GPIO0_GIC_INTID % 32);
-    shift = (GPIO0_GIC_INTID % 4) * 8;
-
-    // put GPIO interrupt into Group 1
-    reg = mmio_read(GICD_IGROUPR(GPIO0_GIC_INTID / 32));
-    reg |= bit;
-    mmio_write(GICD_IGROUPR(GPIO0_GIC_INTID / 32), reg);
-
-    // set priority
-    reg = mmio_read(GICD_IPRIORITYR(GPIO0_GIC_INTID));
-    reg &= ~(0xFFu << shift);
-    reg |= (0x90u << shift);
-    mmio_write(GICD_IPRIORITYR(GPIO0_GIC_INTID), reg);
-
-    // route to CPU
-    reg = mmio_read(GICD_ITARGETSR(GPIO0_GIC_INTID));
-    reg &= ~(0xFFu << shift);
-    reg |= (0x01u << shift);
-    mmio_write(GICD_ITARGETSR(GPIO0_GIC_INTID), reg);
-
-    // enable
-    mmio_write(GICD_ISENABLER(GPIO0_GIC_INTID / 32), bit);
+    // PPI interrupt
+    gic_enable_ppi_irq(TIMER_GIC_INTID, 0x88);
 
     // allow all priorities
     mmio_write(GICC_PMR, 0xFF);
@@ -186,6 +191,10 @@ void handle_irq(void)
     else if (intid == GPIO0_GIC_INTID)
     {
         handle_gpio_irq();
+    }
+    else if (intid == I2C1_GIC_INTID)
+    {
+        i2c_handle_irq();
     }
     else
     {
