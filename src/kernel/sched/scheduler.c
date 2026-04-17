@@ -3,6 +3,7 @@
 #include "kernel/panic.h"
 #include "kernel/timer.h"
 #include "kernel/trace.h"
+#include "kernel/irq.h"
 #include "rpi4/uart.h"
 
 /*
@@ -124,7 +125,9 @@ void task_block_current_no_yield(void)
         kernel_panic("task_block_current_no_yield: task lookup failed\n");
     }
 
+    irq_disable();
     task->state = BLOCKED;
+    irq_enable();
 }
 
 /*
@@ -153,10 +156,14 @@ void task_wakeup(int id)
         return;
     }
 
+    irq_disable();
+
     if (task->state == BLOCKED)
     {
         task->state = READY;
     }
+
+    irq_enable();
 }
 
 /*
@@ -224,13 +231,18 @@ static void scheduler_reap_safe(void)
 void scheduler_yield(void)
 {
     int prev_id = current_task_id;
+    int next_id;
+    task_t *prev = 0;
+    task_t *next = 0;
+
+    irq_disable();
 
     if (prev_id >= 0)
     {
-        task_t *prev = task_get(prev_id);
-
+        prev = task_get(prev_id);
         if (!prev)
         {
+            irq_enable();
             kernel_panic("scheduler_yield: previous task lookup failed\n");
         }
 
@@ -242,48 +254,43 @@ void scheduler_yield(void)
 
     scheduler_reap_safe();
 
-    int next_id = scheduler_pick_next();
-
+    next_id = scheduler_pick_next();
     if (next_id < 0)
     {
+        irq_enable();
         kernel_panic("scheduler_yield: no runnable task\n");
     }
 
     if (prev_id == next_id)
     {
         task_t *same = task_get(next_id);
-
         if (!same)
         {
+            irq_enable();
             kernel_panic("scheduler_yield: same task lookup failed\n");
         }
 
         same->state = RUNNING;
+        irq_enable();
         return;
     }
 
-    task_t *next = task_get(next_id);
-
+    next = task_get(next_id);
     if (!next)
     {
+        irq_enable();
         kernel_panic("scheduler_yield: next task lookup failed\n");
     }
 
     next->state = RUNNING;
-
-    // record context switch for diagnostics
-    trace_record(TRACE_CTX_SWITCH, prev_id, next_id, 0);
     current_task_id = next_id;
+
+    irq_enable();
+
+    trace_record(TRACE_CTX_SWITCH, prev_id, next_id, 0);
 
     if (prev_id >= 0)
     {
-        task_t *prev = task_get(prev_id);
-
-        if (!prev)
-        {
-            kernel_panic("scheduler_yield: previous task lookup failed\n");
-        }
-
         context_switch(&prev->sp, next->sp);
     }
     else
@@ -349,10 +356,12 @@ void task_sleep(uint64_t ticks)
         kernel_panic("task_sleep: task lookup failed\n");
     }
 
+    irq_disable();
     task->wakeup_tick = timer_get_ticks() + ticks;
     task->state = SLEEPING;
-    trace_record(TRACE_TASK_SLEEP, id, -1, (int)ticks);
+    irq_enable();
 
+    trace_record(TRACE_TASK_SLEEP, id, -1, (int)ticks);
     scheduler_yield();
 }
 

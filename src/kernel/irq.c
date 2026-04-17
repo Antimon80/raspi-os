@@ -51,10 +51,28 @@
 #define TIMER_GIC_INTID 30
 #define GPIO0_GIC_INTID 145
 
+static volatile int joystick_work_pending = 0;
+static volatile int joystick_irq_enabled = 0;
+
 static void joystick_deferred_work(void *arg)
 {
     (void)arg;
-    joystick_service_change();
+
+    while (1)
+    {
+        irq_disable();
+
+        if (!joystick_work_pending)
+        {
+            irq_enable();
+            break;
+        }
+
+        joystick_work_pending = 0;
+        irq_enable();
+
+        joystick_service_change();
+    }
 }
 
 static void handle_gpio_irq(void)
@@ -67,10 +85,30 @@ static void handle_gpio_irq(void)
     }
 
     gpio_clear_event(JOYSTICK_INT_GPIO);
+    joystick_irq_set_enabled(1);
 
-    if (deferred_work_schedule_irq(joystick_deferred_work, 0) < 0)
+    if (!joystick_irq_enabled)
     {
         return;
+    }
+
+    irq_disable();
+    if (!joystick_work_pending)
+    {
+        joystick_work_pending = 1;
+        irq_enable();
+
+        if (deferred_work_schedule_irq(joystick_deferred_work, 0) < 0)
+        {
+            irq_disable();
+            joystick_work_pending = 0;
+            irq_enable();
+            return;
+        }
+    }
+    else
+    {
+        irq_enable();
     }
 
     worker_id = deferred_worker_get_task_id();
@@ -78,6 +116,11 @@ static void handle_gpio_irq(void)
     {
         task_wakeup(worker_id);
     }
+}
+
+void joystick_irq_set_enabled(int enabled)
+{
+    joystick_irq_enabled = enabled ? 1 : 0;
 }
 
 /*

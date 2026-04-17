@@ -19,6 +19,8 @@ int joystick_get_task_id(void)
 
 void joystick_task(void)
 {
+    joystick_irq_set_enabled(0);
+
     if (joystick_init() < 0)
     {
         uart_puts("joystick init failed\n");
@@ -27,6 +29,8 @@ void joystick_task(void)
             task_block_current();
         }
     }
+
+    joystick_irq_set_enabled(1);
 
     joy_menu_init();
 

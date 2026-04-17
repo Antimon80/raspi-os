@@ -12,15 +12,9 @@ void irq_enable(void);
 void irq_disable(void);
 void irq_barrier(void);
 
-/* GIC setup for BCM2711 */
 void gic_init(void);
-
-/*
- * Central IRQ handler called from the exception vector.
- */
 void handle_irq(void);
-
-
+void joystick_irq_set_enabled(int enabled);
 void exception_debug(void);
 
 #endif

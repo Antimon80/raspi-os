@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define MAX_TASKS 8
-#define TASK_STACK_SIZE 4096
+#define TASK_STACK_SIZE 8192
 #define TASK_NAME_LEN 16
 #define TASK_FLAG_SYSTEM (1u << 0)
 
