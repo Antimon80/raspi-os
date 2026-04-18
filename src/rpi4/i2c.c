@@ -183,6 +183,10 @@ static void i2c_transfer_reset(void)
  */
 static void i2c_finish_transfer(int error)
 {
+    uart_puts("i2c_finish_transfer entered error=");
+    uart_put_uint((unsigned int)error);
+    uart_puts("\n");
+
     int waiting_id = i2c_transfer.waiting_task_id;
 
     i2c_transfer.error = error;
@@ -328,7 +332,13 @@ static int i2c_start_write(uint8_t addr, const uint8_t *data, size_t len)
     // transmitting immediately.
     i2c_service_tx();
 
+    uart_puts("i2c_start_write: before ST\n");
+    i2c_debug_status("start_write_before", mmio_read(BSC_S));
+
     mmio_write(BSC_C, BSC_C_I2CEN | BSC_C_ST | BSC_C_INTT | BSC_C_INTD);
+
+    uart_puts("i2c_start_write: after ST\n");
+    i2c_debug_status("start_write_after", mmio_read(BSC_S));
 
     return 0;
 }
@@ -354,7 +364,13 @@ static int i2c_start_read(uint8_t addr, uint8_t *data, size_t len)
     i2c_setup_transfer(I2C_READ, 0, 0, data, len);
     i2c_prepare_transfer(addr, (uint32_t)len);
 
+    uart_puts("i2c_start_read: before ST\n");
+    i2c_debug_status("start_read_before", mmio_read(BSC_S));
+
     mmio_write(BSC_C, BSC_C_I2CEN | BSC_C_ST | BSC_C_READ | BSC_C_INTR | BSC_C_INTD);
+
+    uart_puts("i2c_start_read: after ST\n");
+    i2c_debug_status("start_read_after", mmio_read(BSC_S));
 
     return 0;
 }
@@ -381,10 +397,28 @@ static int i2c_wait_for_transfer(void)
         return error;
     }
 
+    uart_puts("i2c_wait: blocking, done=");
+    uart_put_uint((unsigned int)i2c_transfer.done);
+    uart_puts(" busy=");
+    uart_put_uint((unsigned int)i2c_transfer.busy);
+    uart_puts(" error=");
+    uart_put_uint((unsigned int)i2c_transfer.error);
+    uart_puts("\n");
+    i2c_debug_status("wait_block", mmio_read(BSC_S));
+
     task_block_current_no_yield();
     irq_enable();
 
     scheduler_yield();
+
+    uart_puts("i2c_wait: resumed, done=");
+    uart_put_uint((unsigned int)i2c_transfer.done);
+    uart_puts(" busy=");
+    uart_put_uint((unsigned int)i2c_transfer.busy);
+    uart_puts(" error=");
+    uart_put_uint((unsigned int)i2c_transfer.error);
+    uart_puts("\n");
+    i2c_debug_status("wait_resume", mmio_read(BSC_S));
 
     return i2c_transfer.error;
 }
@@ -517,6 +551,9 @@ int i2c_read_reg8(uint8_t addr, uint8_t reg, uint8_t *value)
 void i2c_handle_irq(void)
 {
     uint32_t status = mmio_read(BSC_S);
+
+    uart_puts("i2c_handle_irq entered\n");
+    i2c_debug_status("irq_entry", status);
 
     if (!i2c_transfer.busy)
     {

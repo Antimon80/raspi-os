@@ -1,6 +1,7 @@
 #include "rpi4/uart.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
+#include "rpi4/i2c.h"
 #include "kernel/irq.h"
 #include "kernel/deferred_work.h"
 #include "kernel/sched/task.h"
@@ -28,17 +29,11 @@ void main(void)
     log_init();
     uart_puts("Log OK\n");
 
+    i2c_init();
+    uart_puts("I2C OK\n");
+
     task_init_system();
     scheduler_init();
-
-    deferred_work_init();
-
-    int worker_id = task_create_system(deferred_worker_task, "deferred");
-    if (worker_id < 0)
-    {
-        kernel_panic("Failed to create deferred worker task\n");
-    }
-    deferred_worker_register_task_id(worker_id);
 
     int shell_id = task_create_system(shell_task, "shell");
     if (shell_id < 0)

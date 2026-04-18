@@ -19,6 +19,7 @@ int joystick_get_task_id(void)
 
 void joystick_task(void)
 {
+    uart_puts("joystick task: calling init\n");
     if (joystick_init() < 0)
     {
         uart_puts("joystick init failed\n");

@@ -51,7 +51,7 @@
 #define UART1_GIC_INTID 125
 #define TIMER_GIC_INTID 30
 #define GPIO0_GIC_INTID 145
-#define I2C1_GIC_INTID 117
+#define I2C1_GIC_INTID 149
 
 /*
  * Enable a shared peripheral interrupt (SPI) in the GIC distributor.
@@ -125,18 +125,23 @@ static void gic_enable_ppi_irq(uint32_t intid, uint8_t priority)
  */
 static void handle_gpio_irq(void)
 {
+    uart_puts("gpio irq enteres\n");
     int joystick_id;
 
     if (!gpio_event_detected(JOYSTICK_INT_GPIO))
     {
         return;
     }
+    uart_puts("gpio joystick event detected\n");
 
     gpio_clear_event(JOYSTICK_INT_GPIO);
 
     joystick_id = joystick_get_task_id();
     if (joystick_id >= 0)
     {
+        uart_puts("gpio waking joystick task id=");
+        uart_put_uint((unsigned int)joystick_id);
+        uart_puts("\n");
         task_wakeup(joystick_id);
     }
 }
@@ -182,6 +187,7 @@ void handle_irq(void)
 
     if (intid == UART1_GIC_INTID)
     {
+        uart_puts("irq: uart\n");
         uart_handle_irq();
     }
     else if (intid == TIMER_GIC_INTID)
@@ -190,10 +196,12 @@ void handle_irq(void)
     }
     else if (intid == GPIO0_GIC_INTID)
     {
+        uart_puts("irq: gpio\n");
         handle_gpio_irq();
     }
     else if (intid == I2C1_GIC_INTID)
     {
+        uart_puts("irq: i2c\n");
         i2c_handle_irq();
     }
     else
@@ -215,10 +223,12 @@ void exception_debug(void)
 {
     uart_puts("\n!!! EXCEPTION !!!\n");
 
-    uint64_t esr, elr;
+    uint64_t esr, elr, spsr, far;
 
     asm volatile("mrs %0, esr_el1" : "=r"(esr));
     asm volatile("mrs %0, elr_el1" : "=r"(elr));
+    asm volatile("mrs %0, spsr_el1" : "=r"(spsr));
+    asm volatile("mrs %0, far_el1" : "=r"(far));
 
     uart_puts("ESR: 0x");
     for (int i = 60; i >= 0; i -= 4)
@@ -227,10 +237,27 @@ void exception_debug(void)
         uart_putc(v < 10 ? '0' + v : 'A' + v - 10);
     }
 
+    uart_puts("\nEC: 0x");
+    uart_put_uint((unsigned int)((esr >> 26) & 0x3F));
+
     uart_puts("\nELR: 0x");
     for (int i = 60; i >= 0; i -= 4)
     {
         int v = (elr >> i) & 0xF;
+        uart_putc(v < 10 ? '0' + v : 'A' + v - 10);
+    }
+
+    uart_puts("\nSPSR: 0x");
+    for (int i = 60; i >= 0; i -= 4)
+    {
+        int v = (spsr >> i) & 0xF;
+        uart_putc(v < 10 ? '0' + v : 'A' + v - 10);
+    }
+
+    uart_puts("\nFAR: 0x");
+    for (int i = 60; i >= 0; i -= 4)
+    {
+        int v = (far >> i) & 0xF;
         uart_putc(v < 10 ? '0' + v : 'A' + v - 10);
     }
 
