@@ -4,7 +4,7 @@
 #include "kernel/memory/heap.h"
 #include "kernel/memory/log.h"
 #include "kernel/tasks/demo_task.h"
-#include "kernel/trace.h"
+#include "kernel/debug/trace.h"
 #include "rpi4/uart.h"
 #include "util/string.h"
 #include "util/convert.h"

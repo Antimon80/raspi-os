@@ -1,7 +1,7 @@
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/memory/log.h"
-#include "kernel/trace.h"
+#include "kernel/debug/trace.h"
 #include "kernel/irq.h"
 #include "util/string.h"
 

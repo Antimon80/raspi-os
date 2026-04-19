@@ -1,5 +1,5 @@
 #include "kernel/tasks/deferred_worker_task.h"
-#include "kernel/deferred_work.h"
+#include "kernel/sync/deferred_work.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/irq.h"

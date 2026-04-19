@@ -3,16 +3,14 @@
 #include "rpi4/gpio.h"
 #include "rpi4/i2c.h"
 #include "kernel/irq.h"
-#include "kernel/deferred_work.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
-#include "kernel/panic.h"
+#include "kernel/debug/panic.h"
 #include "kernel/shell/shell.h"
 #include "kernel/timer.h"
 #include "kernel/memory/heap.h"
 #include "kernel/memory/log.h"
 #include "kernel/tasks/joystick_task.h"
-#include "kernel/tasks/deferred_worker_task.h"
 
 /*
  * Kernel entry point.

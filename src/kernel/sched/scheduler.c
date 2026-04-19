@@ -1,8 +1,8 @@
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
-#include "kernel/panic.h"
+#include "kernel/debug/panic.h"
 #include "kernel/timer.h"
-#include "kernel/trace.h"
+#include "kernel/debug/trace.h"
 #include "kernel/irq.h"
 #include "rpi4/uart.h"
 

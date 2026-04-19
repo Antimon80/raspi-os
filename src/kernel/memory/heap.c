@@ -1,5 +1,5 @@
 #include "kernel/memory/heap.h"
-#include "kernel/panic.h"
+#include "kernel/debug/panic.h"
 #include "rpi4/uart.h"
 
 #define HEAP_SIZE (4 * 1024 * 1024)

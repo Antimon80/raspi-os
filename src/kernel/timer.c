@@ -1,5 +1,5 @@
 #include "kernel/timer.h"
-#include "kernel/trace.h"
+#include "kernel/debug/trace.h"
 #include "kernel/sched/task.h"
 
 static volatile uint64_t system_ticks = 0;
