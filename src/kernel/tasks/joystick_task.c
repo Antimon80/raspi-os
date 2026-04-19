@@ -55,8 +55,6 @@ void joystick_task(void)
         irq_enable();
         scheduler_yield();
 
-        irq_enable();
-
         // One threaded-botto-half pass:
         // reas 0xF2, decode state change, enqueue resulting event
         joystick_service_change();

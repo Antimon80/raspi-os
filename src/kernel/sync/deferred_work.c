@@ -1,4 +1,4 @@
-#include "kernel/deferred_work.h"
+#include "kernel/sync/deferred_work.h"
 #include "kernel/irq.h"
 
 #define DEFERRED_WORK_QUEUE_SIZE 32

@@ -2,6 +2,7 @@
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
 #include "rpi4/i2c.h"
+#include "rpi4/i2c_bus.h"
 #include "kernel/irq.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
@@ -11,6 +12,7 @@
 #include "kernel/memory/heap.h"
 #include "kernel/memory/log.h"
 #include "kernel/tasks/joystick_task.h"
+#include "kernel/tasks/led_task.h"
 
 /*
  * Kernel entry point.
@@ -30,6 +32,9 @@ void main(void)
     i2c_init();
     uart_puts("I2C OK\n");
 
+    i2c_bus_init();
+    uart_puts("I2C bus lock OK\n");
+
     task_init_system();
     scheduler_init();
 
@@ -40,6 +45,13 @@ void main(void)
     }
 
     uart_set_rx_task(shell_id);
+
+    int led_id = task_create_system(led_task, "led");
+    if (led_id < 0)
+    {
+        kernel_panic("Failed to crate led task\n");
+    }
+    led_register_task_id(led_id);
 
     int joystick_id = task_create_system(joystick_task, "joystick");
     if (joystick_id < 0)

@@ -9,7 +9,7 @@
  *
  * Stale waiter bits are cleaned up while scanning.
  */
-static mutex_find_waiter(mutex_t *mutex)
+static int mutex_find_waiter(mutex_t *mutex)
 {
     int current = scheduler_current_task_id();
     int start = (current < 0) ? 0 : current;

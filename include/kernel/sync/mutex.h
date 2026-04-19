@@ -10,7 +10,7 @@ typedef struct mutex
     uint32_t waiter_mask;
 } mutex_t;
 
-void mutx_init(mutex_t *mutex);
+void mutex_init(mutex_t *mutex);
 int mutex_try_lock(mutex_t *mutex);
 void mutex_lock(mutex_t *mutex);
 void mutex_unlock(mutex_t *mutex);

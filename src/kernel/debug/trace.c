@@ -1,4 +1,4 @@
-#include "kernel/trace.h"
+#include "kernel/debug/trace.h"
 #include "kernel/timer.h"
 
 #define TRACE_BUFFER_SIZE 128

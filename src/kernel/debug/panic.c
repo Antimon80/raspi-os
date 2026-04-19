@@ -1,4 +1,4 @@
-#include "kernel/panic.h"
+#include "kernel/debug/panic.h"
 #include "rpi4/uart.h"
 #include "kernel/irq.h"
 

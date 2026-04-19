@@ -3,13 +3,14 @@
 #include "kernel/sched/scheduler.h"
 #include "sensehat/joystick.h"
 #include "rpi4/i2c.h"
+#include "rpi4/i2c_bus.h"
 #include "rpi4/gpio.h"
 #include "rpi4/uart.h"
 
 /*
  * Sense HAT controller I2C address and joystick state register.
  */
-#define JOYSTICK_ADDR 0x46
+#define SENSEHAT_ADDR 0x46
 #define JOYSTICK_KEYS_REG 0xF2
 
 /*
@@ -176,10 +177,15 @@ static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
  */
 void joystick_service_change(void)
 {
+    int rc;
     uint8_t state;
     joy_event_t event;
 
-    if (i2c_read_reg8(JOYSTICK_ADDR, JOYSTICK_KEYS_REG, &state) < 0)
+    i2c_bus_lock();
+    rc = i2c_read_reg8(SENSEHAT_ADDR, JOYSTICK_KEYS_REG, &state);
+    i2c_bus_unlock();
+
+    if (rc < 0)
     {
         uart_puts("joystick: i2c read failed\n");
         return;
@@ -200,12 +206,18 @@ void joystick_service_change(void)
  */
 int joystick_init(void)
 {
+    int rc;
+
     joystick_init_interrupt();
 
     joystick_event_head = 0;
     joystick_event_tail = 0;
 
-    if (i2c_read_reg8(JOYSTICK_ADDR, JOYSTICK_KEYS_REG, &joystick_prev_state) < 0)
+    i2c_bus_lock();
+    rc = i2c_read_reg8(SENSEHAT_ADDR, JOYSTICK_KEYS_REG, &joystick_prev_state);
+    i2c_bus_unlock();
+    
+    if (rc < 0)
     {
         uart_puts("joystick init: initial read failed\n");
         return -1;
