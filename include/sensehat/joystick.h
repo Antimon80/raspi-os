@@ -9,5 +9,7 @@ int joystick_init(void);
 joy_event_t joystick_read_event(void);
 int joystick_has_event(void);
 void joystick_service_change(void);
+void joystick_signal_irq(void);
+int joystick_consume_irq(void);
 
 #endif

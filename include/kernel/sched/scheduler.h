@@ -9,7 +9,6 @@ void scheduler_yield(void);
 int scheduler_current_task_id(void);
 
 void task_sleep(uint64_t ticks);
-void task_block_current_no_yield(void);
 void task_block_current(void);
 void task_wakeup(int id);
 

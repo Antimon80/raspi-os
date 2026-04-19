@@ -125,23 +125,18 @@ static void gic_enable_ppi_irq(uint32_t intid, uint8_t priority)
  */
 static void handle_gpio_irq(void)
 {
-    uart_puts("gpio irq enteres\n");
     int joystick_id;
 
     if (!gpio_event_detected(JOYSTICK_INT_GPIO))
     {
         return;
     }
-    uart_puts("gpio joystick event detected\n");
 
     gpio_clear_event(JOYSTICK_INT_GPIO);
 
     joystick_id = joystick_get_task_id();
     if (joystick_id >= 0)
     {
-        uart_puts("gpio waking joystick task id=");
-        uart_put_uint((unsigned int)joystick_id);
-        uart_puts("\n");
         task_wakeup(joystick_id);
     }
 }
@@ -187,7 +182,6 @@ void handle_irq(void)
 
     if (intid == UART1_GIC_INTID)
     {
-        uart_puts("irq: uart\n");
         uart_handle_irq();
     }
     else if (intid == TIMER_GIC_INTID)
@@ -196,12 +190,10 @@ void handle_irq(void)
     }
     else if (intid == GPIO0_GIC_INTID)
     {
-        uart_puts("irq: gpio\n");
         handle_gpio_irq();
     }
     else if (intid == I2C1_GIC_INTID)
     {
-        uart_puts("irq: i2c\n");
         i2c_handle_irq();
     }
     else

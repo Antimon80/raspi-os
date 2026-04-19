@@ -3,6 +3,7 @@
 #include "rpi4/gpio.h"
 #include "util/convert.h"
 #include "kernel/sched/scheduler.h"
+#include "kernel/sched/task.h"
 #include "kernel/irq.h"
 
 /* Base address of peripheral MMIO region (Raspberry Pi 4 BCM2711) */
@@ -150,6 +151,9 @@ int uart_read_char(char *c)
  */
 int uart_read_char_blocking(char *c)
 {
+    int id;
+    task_t *task;
+
     if (!c)
     {
         return 0;
@@ -165,7 +169,21 @@ int uart_read_char_blocking(char *c)
             return 1;
         }
 
-        task_block_current_no_yield();
+        id = scheduler_current_task_id();
+        if (id < 0)
+        {
+            irq_enable();
+            return 0;
+        }
+
+        task = task_get(id);
+        if (!task)
+        {
+            irq_enable();
+            return 0;
+        }
+
+        task->state = BLOCKED;
         irq_enable();
 
         scheduler_yield();

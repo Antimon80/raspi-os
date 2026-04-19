@@ -104,12 +104,12 @@ int scheduler_current_task_id(void)
 }
 
 /*
- * Mark the current task as BLOCKED without yielding immediately.
+ * Block the current task until an external event wakes it.
  *
- * This is used for atomic check-then-block sequences where interrupts
- * are disabled and the caller will yield only after re-enabling them.
+ * The task state is set to BLOCKED and the CPU is yielded so another
+ * runnable task can be scheduled.
  */
-void task_block_current_no_yield(void)
+void task_block_current(void)
 {
     int id = current_task_id;
 
@@ -128,17 +128,7 @@ void task_block_current_no_yield(void)
     irq_disable();
     task->state = BLOCKED;
     irq_enable();
-}
 
-/*
- * Block the current task until an external event wakes it.
- *
- * The task state is set to BLOCKED and the CPU is yielded so another
- * runnable task can be scheduled.
- */
-void task_block_current(void)
-{
-    task_block_current_no_yield();
     scheduler_yield();
 }
 

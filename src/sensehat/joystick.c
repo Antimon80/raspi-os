@@ -9,8 +9,8 @@
 /*
  * Sense HAT controller I2C address and joystick state register.
  */
-#define SENSEHAT_ADDR 0x46
-#define SENSEHAT_KEYS_REG 0xF2
+#define JOYSTICK_ADDR 0x46
+#define JOYSTICK_KEYS_REG 0xF2
 
 /*
  * Bit layout of the joystick state register.
@@ -67,15 +67,11 @@ static int joystick_queue_is_full(void)
  */
 static void joystick_enqueue_event(joy_event_t event)
 {
-    uart_puts("joy_enqueue entered event=");
-    uart_put_uint((unsigned int)event);
-    uart_puts("\n");
     unsigned int next;
     int id;
 
     if (event == JOY_EVENT_NONE)
     {
-        uart_puts("joy_enqueue: ignore NONE\n");
         return;
     }
 
@@ -84,12 +80,6 @@ static void joystick_enqueue_event(joy_event_t event)
     if (joystick_queue_is_full())
     {
         irq_enable();
-        uart_puts("joy enqueue: queue full\n");
-        uart_puts("joy enqueue head=");
-        uart_put_uint((unsigned int)joystick_event_head);
-        uart_puts(" tail=");
-        uart_put_uint((unsigned int)joystick_event_tail);
-        uart_puts("\n");
         return;
     }
 
@@ -97,22 +87,11 @@ static void joystick_enqueue_event(joy_event_t event)
     next = (joystick_event_head + 1u) % JOY_EVENT_QUEUE_SIZE;
     joystick_event_head = next;
 
-    uart_puts("joy enqueue: queued event=");
-    uart_put_uint((unsigned int)event);
-    uart_puts(" head=");
-    uart_put_uint((unsigned int)joystick_event_head);
-    uart_puts(" tail=");
-    uart_put_uint((unsigned int)joystick_event_tail);
-    uart_puts("\n");
-
     irq_enable();
 
     id = joystick_get_task_id();
     if (id >= 0)
     {
-        uart_puts("joy enqueue: wake task id=");
-        uart_put_uint((unsigned int)id);
-        uart_puts("\n");
         task_wakeup(id);
     }
 }
@@ -124,8 +103,6 @@ static void joystick_enqueue_event(joy_event_t event)
  */
 static void joystick_init_interrupt(void)
 {
-    uart_puts("joy_init irq gpio23\n");
-
     gpio_use_as_input(JOYSTICK_INT_GPIO);
 
     gpio_disable_rising_edge(JOYSTICK_INT_GPIO);
@@ -134,8 +111,6 @@ static void joystick_init_interrupt(void)
 
     gpio_enable_rising_edge(JOYSTICK_INT_GPIO);
     gpio_clear_event(JOYSTICK_INT_GPIO);
-
-    uart_puts("joy_init irq gpio23 done\n");
 }
 
 /*
@@ -146,16 +121,10 @@ static void joystick_init_interrupt(void)
  */
 static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
 {
-    uart_puts("joy decode prev=");
-    uart_put_uint((unsigned int)prev);
-    uart_puts(" curr=");
-    uart_put_uint((unsigned int)curr);
-    uart_puts("\n");
     uint8_t changed = (uint8_t)(prev ^ curr);
 
     if (changed == 0)
     {
-        uart_puts("joy decode: no change\n");
         return JOY_EVENT_NONE;
     }
 
@@ -166,12 +135,10 @@ static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
     {
         if (curr & JOY_BIT_CENTER)
         {
-            uart_puts("joy decode: CENTER_PRESS\n");
             return JOY_EVENT_CENTER_PRESS;
         }
         else
         {
-            uart_puts("joy decode: CENTER_RELEASE\n");
             return JOY_EVENT_CENTER_RELEASE;
         }
     }
@@ -179,28 +146,23 @@ static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
     // direction buttons: generate one event on press only
     if ((changed & JOY_BIT_UP) && (curr & JOY_BIT_UP))
     {
-        uart_puts("joy decode: UP\n");
         return JOY_EVENT_UP;
     }
 
     if ((changed & JOY_BIT_DOWN) && (curr & JOY_BIT_DOWN))
     {
-        uart_puts("joy decode: DOWN\n");
         return JOY_EVENT_DOWN;
     }
 
     if ((changed & JOY_BIT_LEFT) && (curr & JOY_BIT_LEFT))
     {
-        uart_puts("joy decode: LEFT\n");
         return JOY_EVENT_LEFT;
     }
 
     if ((changed & JOY_BIT_RIGHT) && (curr & JOY_BIT_RIGHT))
     {
-        uart_puts("joy decode: RIGHT\n");
         return JOY_EVENT_RIGHT;
     }
-    uart_puts("joy decode: no mapped event\n");
     return JOY_EVENT_NONE;
 }
 
@@ -214,30 +176,17 @@ static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
  */
 void joystick_service_change(void)
 {
-    uart_puts("joy service change entered\n");
     uint8_t state;
     joy_event_t event;
 
-    uart_puts("joy service change: read state\n");
-    if (i2c_read_reg8(SENSEHAT_ADDR, SENSEHAT_KEYS_REG, &state) < 0)
+    if (i2c_read_reg8(JOYSTICK_ADDR, JOYSTICK_KEYS_REG, &state) < 0)
     {
         uart_puts("joystick: i2c read failed\n");
         return;
     }
-    uart_puts("joy service change: state=");
-    uart_put_uint((unsigned int)state);
-    uart_puts(" prev=");
-    uart_put_uint((unsigned int)joystick_prev_state);
-    uart_puts("\n");
 
     event = joystick_decode_event(joystick_prev_state, state);
-    uart_puts("joy service change: decoded event=");
-    uart_put_uint((unsigned int)event);
-    uart_puts("\n");
     joystick_prev_state = state;
-    uart_puts("joy service change: new prev=");
-    uart_put_uint((unsigned int)joystick_prev_state);
-    uart_puts("\n");
 
     joystick_enqueue_event(event);
 }
@@ -251,23 +200,16 @@ void joystick_service_change(void)
  */
 int joystick_init(void)
 {
-    uart_puts("joystick init entered\n");
     joystick_init_interrupt();
 
     joystick_event_head = 0;
     joystick_event_tail = 0;
-    uart_puts("joystick init: queue reset\n");
 
-    uart_puts("joystick init: read initial state\n");
-    if (i2c_read_reg8(SENSEHAT_ADDR, SENSEHAT_KEYS_REG, &joystick_prev_state) < 0)
+    if (i2c_read_reg8(JOYSTICK_ADDR, JOYSTICK_KEYS_REG, &joystick_prev_state) < 0)
     {
         uart_puts("joystick init: initial read failed\n");
         return -1;
     }
-    uart_puts("joystick init: initial read ok, state=");
-    uart_put_hex_uintptr((uintptr_t)joystick_prev_state);
-    uart_puts("\n");
-    uart_puts("joystick init: done\n");
 
     return 0;
 }
@@ -292,7 +234,6 @@ int joystick_has_event(void)
  */
 joy_event_t joystick_read_event(void)
 {
-    uart_puts("joystick_read_event entered\n");
     joy_event_t event;
 
     irq_disable();
@@ -300,18 +241,10 @@ joy_event_t joystick_read_event(void)
     if (joystick_queue_is_empty())
     {
         irq_enable();
-        uart_puts("joystick_read_event: queue empty\n");
         return JOY_EVENT_NONE;
     }
 
     event = joystick_event_queue[joystick_event_tail];
-    uart_puts("joystick_read_event: event=");
-    uart_put_uint((unsigned int)event);
-    uart_puts(" new tail=");
-    uart_put_uint((unsigned int)joystick_event_tail);
-    uart_puts(" head=");
-    uart_put_uint((unsigned int)joystick_event_head);
-    uart_puts("\n");
     joystick_event_tail = (joystick_event_tail + 1u) % JOY_EVENT_QUEUE_SIZE;
 
     irq_enable();

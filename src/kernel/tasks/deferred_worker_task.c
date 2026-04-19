@@ -20,11 +20,28 @@ void deferred_worker_task(void)
 {
     while (1)
     {
+        int id;
+        task_t *task;
+
         irq_disable();
 
         if (!deferred_work_has_items())
         {
-            task_block_current_no_yield();
+            id = scheduler_current_task_id();
+            if (id < 0)
+            {
+                irq_enable();
+                continue;
+            }
+
+            task = task_get(id);
+            if (!task)
+            {
+                irq_enable();
+                continue;
+            }
+
+            task->state = BLOCKED;
             irq_enable();
             scheduler_yield();
             continue;
