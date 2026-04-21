@@ -1,4 +1,5 @@
 #include "rpi4/uart.h"
+#include "rpi4/hdmi.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
 #include "util/convert.h"
@@ -106,6 +107,7 @@ void uart_putc(char c)
     }
 
     mmio_write(AUX_MU_IO_REG, (uint32_t)c);
+    hdmi_putc(c);
 }
 
 /*

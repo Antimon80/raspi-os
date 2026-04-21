@@ -1,4 +1,5 @@
 #include "rpi4/uart.h"
+#include "rpi4/hdmi.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
 #include "rpi4/i2c.h"
@@ -20,6 +21,10 @@
 void main(void)
 {
     uart_init();
+    hdmi_init();
+    hdmi_show_bootscreen();
+    hdmi_clear_console();
+
     uart_puts("Boot OK\n");
     uart_puts("UART OK\n");
 
