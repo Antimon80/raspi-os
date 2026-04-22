@@ -54,7 +54,7 @@ void main(void)
     int led_id = task_create_system(led_task, "led");
     if (led_id < 0)
     {
-        kernel_panic("Failed to crate led task\n");
+        kernel_panic("Failed to create led task\n");
     }
     led_register_task_id(led_id);
 

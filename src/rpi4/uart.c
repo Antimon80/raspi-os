@@ -147,7 +147,7 @@ void uart_init(void)
 void uart_putc(char c)
 {
     uart_putc_raw(c);
-    hdmi_putc(c);
+    //hdmi_putc(c);
 }
 
 /*

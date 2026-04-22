@@ -51,9 +51,9 @@ static uint8_t led_matrix_to_hw_channel(uint8_t value)
  *   ...
  * for 64 pixels total.
  */
-static int led_matrix_pixel_base_index(int x, int y)
+static int led_matrix_row_base_index(int y)
 {
-    return ((y * MATRIX_WIDTH) + x) * 3;
+    return y * 24;
 }
 
 /*
@@ -149,13 +149,13 @@ int led_matrix_present(void)
 
     for (y = 0; y < MATRIX_HEIGHT; y++)
     {
+        base = 1 + led_matrix_row_base_index(y);
+
         for (x = 0; x < MATRIX_WIDTH; x++)
         {
-            base = 1 + led_matrix_pixel_base_index(x, y);
-
-            tx[base + 0] = led_matrix_to_hw_channel(led_matrix_fb[y][x].r);
-            tx[base + 1] = led_matrix_to_hw_channel(led_matrix_fb[y][x].g);
-            tx[base + 2] = led_matrix_to_hw_channel(led_matrix_fb[y][x].b);
+            tx[base + x] = led_matrix_to_hw_channel(led_matrix_fb[y][x].r);
+            tx[base + 8 + x] = led_matrix_to_hw_channel(led_matrix_fb[y][x].g);
+            tx[base + 16 + x] = led_matrix_to_hw_channel(led_matrix_fb[y][x].b);
         }
     }
 
