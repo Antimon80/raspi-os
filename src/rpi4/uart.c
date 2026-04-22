@@ -42,12 +42,56 @@ static volatile unsigned int uart_head = 0;
 static volatile unsigned int uart_tail = 0;
 static int uart_rx_task_id = -1;
 
+static uint32_t uart_can_write(void);
+static unsigned int uart_data_ready(void);
+
+/*
+ * Send a single character only to the Mini UART, without mirroring it to HDMI.
+ */
+void uart_putc_raw(char c)
+{
+    while (!uart_can_write())
+    {
+    }
+
+    mmio_write(AUX_MU_IO_REG, (uint32_t)c);
+}
+
+/*
+ * Send a string only to the Mini UART.
+ * Converts '\n' to CRLF for terminal compatibility.
+ */
+void uart_puts_raw(const char *s)
+{
+    while (*s)
+    {
+        if (*s == '\n')
+        {
+            uart_putc_raw('\r');
+        }
+        uart_putc_raw(*s++);
+    }
+}
+
 /*
  * Register the task that should be woken when UART RX data arrives.
  */
 void uart_set_rx_task(int task_id)
 {
     uart_rx_task_id = task_id;
+}
+
+int uart_get_rx_task(void)
+{
+    return uart_rx_task_id;
+}
+
+void uart_flush_rx(void)
+{
+    irq_disable();
+    uart_head = 0;
+    uart_tail = 0;
+    irq_enable();
 }
 
 /*
@@ -102,11 +146,7 @@ void uart_init(void)
  */
 void uart_putc(char c)
 {
-    while (!uart_can_write())
-    {
-    }
-
-    mmio_write(AUX_MU_IO_REG, (uint32_t)c);
+    uart_putc_raw(c);
     hdmi_putc(c);
 }
 

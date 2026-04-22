@@ -4,6 +4,7 @@
 #include "kernel/memory/heap.h"
 #include "kernel/memory/log.h"
 #include "kernel/tasks/demo_task.h"
+#include "kernel/tasks/tictactoe_task.h"
 #include "kernel/debug/trace.h"
 #include "rpi4/uart.h"
 #include "util/string.h"
@@ -24,7 +25,8 @@ static const startable_task_t startable_tasks[] = {
     {"heart", heartbeat_task},
     {"fast", worker_fast_task},
     {"slow", worker_slow_task},
-    {"burst", burst_task}};
+    {"burst", burst_task},
+    {"tictactoe", tictactoe_task}};
 
 /*
  * Print a textual representation of a task state.
@@ -155,6 +157,7 @@ void shell_cmd_help(void)
     uart_puts("  startable\n");
     uart_puts("  start <name>\n");
     uart_puts("  stop <id|name>\n");
+    uart_puts("  start tictactoe\n");
     uart_puts("  trace dump\n");
     uart_puts("  trace clear\n");
 }

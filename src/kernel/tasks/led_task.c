@@ -26,26 +26,28 @@ int led_get_task_id(void)
 /*
  * Minimal LED test task.
  *
- * Initializes the LED matrix, clears it and fills it with a solid color.
+ * If the Sense HAT matrix is not present, the task exits quietly after
+ * reporting that the optional device is unavailable.
  */
 void led_task(void)
 {
     if (led_matrix_init() < 0)
     {
-        uart_puts("led task: matrix init failed\n");
-        while (1)
-        {
-            task_block_current();
-        }
+        uart_puts("led task: Sense HAT matrix not detected, disabling task\n");
+        return;
     }
 
     uart_puts("led task: matrix init OK\n");
 
-    // clear display
+    /*
+     * Clear the display before entering the demo loop.
+     */
     led_matrix_clear();
     led_matrix_present();
 
-    // fill with alternating r - g - b
+    /*
+     * Fill the matrix with alternating red, green and blue frames.
+     */
     while (1)
     {
         led_matrix_color_t red = {255, 0, 0};
