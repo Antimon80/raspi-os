@@ -5,7 +5,9 @@
 #include "kernel/memory/log.h"
 #include "kernel/tasks/demo_task.h"
 #include "kernel/tasks/tictactoe_task.h"
+#include "kernel/tasks/gol_task.h"
 #include "kernel/debug/trace.h"
+#include "sensehat/led_matrix.h"
 #include "rpi4/uart.h"
 #include "util/string.h"
 #include "util/convert.h"
@@ -26,7 +28,8 @@ static const startable_task_t startable_tasks[] = {
     {"fast", worker_fast_task},
     {"slow", worker_slow_task},
     {"burst", burst_task},
-    {"tictactoe", tictactoe_task}};
+    {"tictactoe", tictactoe_task},
+    {"gol", gol_task}};
 
 /*
  * Print a textual representation of a task state.
@@ -157,7 +160,6 @@ void shell_cmd_help(void)
     uart_puts("  startable\n");
     uart_puts("  start <name>\n");
     uart_puts("  stop <id|name>\n");
-    uart_puts("  start tictactoe\n");
     uart_puts("  trace dump\n");
     uart_puts("  trace clear\n");
 }
@@ -280,6 +282,8 @@ void shell_cmd_stop_id(int id)
         uart_puts("failed to stop task\n");
         return;
     }
+
+    led_matrix_release(id);
 
     uart_puts("stop requested for task ");
     uart_put_uint((unsigned int)id);

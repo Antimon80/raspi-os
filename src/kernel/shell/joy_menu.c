@@ -79,6 +79,15 @@ static void joy_menu_cmd_stop_slow(void)
 {
     shell_cmd_stop_arg("slow");
 }
+static void joy_menu_cmd_start_gol(void)
+{
+    shell_cmd_start_arg("gol");
+}
+
+static void joy_menu_cmd_stop_gol(void)
+{
+    shell_cmd_stop_arg("gol");
+}
 
 /*
  * Static list of menu entries.
@@ -96,6 +105,8 @@ static const joy_menu_entry_t menu_entries[] =
         {"stop fast", joy_menu_cmd_stop_fast},
         {"start slow", joy_menu_cmd_start_slow},
         {"stop slow", joy_menu_cmd_stop_slow},
+        {"start gol", joy_menu_cmd_start_gol},
+        {"stop gol", joy_menu_cmd_stop_gol},
         {"trace dump", shell_cmd_trace_dump},
 };
 

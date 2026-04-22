@@ -1,4 +1,6 @@
 #include "sensehat/led_matrix.h"
+#include "kernel/sched/scheduler.h"
+#include "kernel/irq.h"
 #include "rpi4/i2c.h"
 #include "rpi4/i2c_bus.h"
 #include "rpi4/uart.h"
@@ -15,6 +17,8 @@
  * 0x00..0xBF (8 * 8 * 3 channels).
  */
 #define LED_MATRIX_PIXEL_BYTES (MATRIX_WIDTH * MATRIX_HEIGHT * 3)
+
+static int led_matrix_owner_task_id = -1;
 
 /*
  * Local shadow framebuffer in 8-bit RGB.
@@ -170,4 +174,63 @@ int led_matrix_present(void)
     }
 
     return 0;
+}
+
+int led_matrix_acquire(void)
+{
+    int current_id = scheduler_current_task_id();
+
+    if (current_id < 0)
+    {
+        return -1;
+    }
+
+    irq_disable();
+
+    if (led_matrix_owner_task_id == -1)
+    {
+        led_matrix_owner_task_id = current_id;
+        irq_enable();
+        return 0;
+    }
+
+    if (led_matrix_owner_task_id == current_id)
+    {
+        irq_enable();
+        return 0;
+    }
+
+    irq_enable();
+    return -1;
+}
+
+void led_matrix_release(int task_id)
+{
+    irq_disable();
+
+    if(led_matrix_owner_task_id == task_id){
+        led_matrix_owner_task_id = - 1;
+    }
+
+    irq_enable();
+}
+
+int led_matrix_is_owned(void){
+    int owned;
+
+    irq_disable();
+    owned = (led_matrix_owner_task_id >= 0);
+    irq_enable();
+
+    return owned;
+}
+
+int led_matrix_get_owner(void){
+    int owner;
+    
+    irq_disable();
+    owner = led_matrix_owner_task_id;
+    irq_enable();
+
+    return owner;
 }

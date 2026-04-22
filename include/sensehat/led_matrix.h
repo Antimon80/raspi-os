@@ -14,10 +14,16 @@ typedef struct
 } led_matrix_color_t;
 
 int led_matrix_init(void);
+
 void led_matrix_clear(void);
 void led_matrix_fill(led_matrix_color_t color);
 int led_matrix_set_pixel(int x, int y, led_matrix_color_t color);
 int led_matrix_get_pixel(int x, int y, led_matrix_color_t *color);
 int led_matrix_present(void);
+
+int led_matrix_acquire(void);
+void led_matrix_release(int task_id);
+int led_matrix_is_owned(void);
+int led_matrix_get_owner(void);
 
 #endif
