@@ -129,11 +129,9 @@ static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
         return JOY_EVENT_NONE;
     }
 
-    /*
-     * Center button:
-     * report both press and release because the menu logic
-     * distinguishes short and long presses.
-     */
+    // center button:
+    // report both press and release because the menu logic
+    // distinguishes short and long presses
     if (changed & JOY_BIT_CENTER)
     {
         if (curr & JOY_BIT_CENTER)
@@ -146,10 +144,7 @@ static joy_event_t joystick_decode_event(uint8_t prev, uint8_t curr)
         }
     }
 
-    /*
-     * Direction buttons:
-     * generate one event on the press edge only.
-     */
+    // direction buttons: generate one event on press only
     if ((changed & JOY_BIT_UP) && (curr & JOY_BIT_UP))
     {
         return JOY_EVENT_UP;
@@ -187,11 +182,12 @@ void joystick_service_change(void)
     joy_event_t event;
 
     i2c_bus_lock();
-    rc = i2c_read_reg8_quiet(SENSEHAT_ADDR, JOYSTICK_KEYS_REG, &state);
+    rc = i2c_read_reg8(SENSEHAT_ADDR, JOYSTICK_KEYS_REG, &state);
     i2c_bus_unlock();
 
     if (rc < 0)
     {
+        uart_puts("joystick: i2c read failed\n");
         return;
     }
 
@@ -218,11 +214,12 @@ int joystick_init(void)
     joystick_event_tail = 0;
 
     i2c_bus_lock();
-    rc = i2c_read_reg8_quiet(SENSEHAT_ADDR, JOYSTICK_KEYS_REG, &joystick_prev_state);
+    rc = i2c_read_reg8(SENSEHAT_ADDR, JOYSTICK_KEYS_REG, &joystick_prev_state);
     i2c_bus_unlock();
-
+    
     if (rc < 0)
     {
+        uart_puts("joystick init: initial read failed\n");
         return -1;
     }
 

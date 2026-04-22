@@ -69,8 +69,6 @@ typedef struct
     volatile int busy;
     volatile int done;
     volatile int error;
-    /* Suppress debug logging for optional hardware probes. */
-    volatile int quiet;
 
     i2c_op_t op;
     int waiting_task_id;
@@ -146,7 +144,7 @@ static void i2c_reset_controller(void)
     mmio_write(BSC_DIV, I2C_DEFAULT_DIVIDER);
     mmio_write(BSC_DEL, 0x00300030);
 
-    /* Disable clock-stretch timeout for now. */
+    // Disable clock-stretch timeout for now
     mmio_write(BSC_CLKT, 0);
 
     mmio_write(BSC_C, BSC_C_I2CEN);
@@ -164,7 +162,6 @@ static void i2c_transfer_reset(void)
     i2c_transfer.busy = 0;
     i2c_transfer.done = 0;
     i2c_transfer.error = 0;
-    i2c_transfer.quiet = 0;
     i2c_transfer.op = I2C_NONE;
     i2c_transfer.waiting_task_id = -1;
     i2c_transfer.tx_buf = 0;
@@ -268,12 +265,11 @@ static void i2c_prepare_transfer(uint8_t addr, uint32_t dlen)
  * Assumes that no transfer is currently active.
  */
 static void i2c_setup_transfer(i2c_op_t op, const uint8_t *tx_buf, size_t tx_len,
-                               uint8_t *rx_buf, size_t rx_len, int quiet)
+                               uint8_t *rx_buf, size_t rx_len)
 {
     i2c_transfer.busy = 1;
     i2c_transfer.done = 0;
     i2c_transfer.error = 0;
-    i2c_transfer.quiet = quiet;
     i2c_transfer.op = op;
     i2c_transfer.waiting_task_id = scheduler_current_task_id();
 
@@ -314,7 +310,7 @@ static int i2c_can_start_transfer(void)
  * The calling task will block until completion.
  * Data is written via FIFO and completed in IRQ context.
  */
-static int i2c_start_write_common(uint8_t addr, const uint8_t *data, size_t len, int quiet)
+static int i2c_start_write(uint8_t addr, const uint8_t *data, size_t len)
 {
     if (!data || len == 0)
     {
@@ -326,13 +322,11 @@ static int i2c_start_write_common(uint8_t addr, const uint8_t *data, size_t len,
         return -1;
     }
 
-    i2c_setup_transfer(I2C_WRITE, data, len, 0, 0, quiet);
+    i2c_setup_transfer(I2C_WRITE, data, len, 0, 0);
     i2c_prepare_transfer(addr, (uint32_t)len);
 
-    /*
-     * Pre-fill the FIFO before asserting ST so the controller can start
-     * transmitting immediately.
-     */
+    // Pre-fill the FIFO before asserting ST so the controller can start
+    // transmitting immediately.
     i2c_service_tx();
     mmio_write(BSC_C, BSC_C_I2CEN | BSC_C_ST | BSC_C_INTT | BSC_C_INTD);
     return 0;
@@ -344,7 +338,7 @@ static int i2c_start_write_common(uint8_t addr, const uint8_t *data, size_t len,
  * The calling task will block until completion.
  * Data is received via FIFO and filled in IRQ context.
  */
-static int i2c_start_read_common(uint8_t addr, uint8_t *data, size_t len, int quiet)
+static int i2c_start_read(uint8_t addr, uint8_t *data, size_t len)
 {
     if (!data || len == 0)
     {
@@ -356,7 +350,7 @@ static int i2c_start_read_common(uint8_t addr, uint8_t *data, size_t len, int qu
         return -1;
     }
 
-    i2c_setup_transfer(I2C_READ, 0, 0, data, len, quiet);
+    i2c_setup_transfer(I2C_READ, 0, 0, data, len);
     i2c_prepare_transfer(addr, (uint32_t)len);
 
     mmio_write(BSC_C, BSC_C_I2CEN | BSC_C_ST | BSC_C_READ | BSC_C_INTR | BSC_C_INTD);
@@ -435,23 +429,7 @@ void i2c_init(void)
  */
 int i2c_write(uint8_t addr, const uint8_t *data, size_t len)
 {
-    if (i2c_start_write_common(addr, data, len, 0) < 0)
-    {
-        return -1;
-    }
-
-    return i2c_wait_for_transfer();
-}
-
-/*
- * Perform a blocking I2C write transfer without error debug output.
- *
- * Intended for optional hardware probes where a missing device is an
- * expected condition rather than a fatal error.
- */
-int i2c_write_quiet(uint8_t addr, const uint8_t *data, size_t len)
-{
-    if (i2c_start_write_common(addr, data, len, 1) < 0)
+    if (i2c_start_write(addr, data, len) < 0)
     {
         return -1;
     }
@@ -467,23 +445,7 @@ int i2c_write_quiet(uint8_t addr, const uint8_t *data, size_t len)
  */
 int i2c_read(uint8_t addr, uint8_t *data, size_t len)
 {
-    if (i2c_start_read_common(addr, data, len, 0) < 0)
-    {
-        return -1;
-    }
-
-    return i2c_wait_for_transfer();
-}
-
-/*
- * Perform a blocking I2C read transfer without error debug output.
- *
- * Intended for optional hardware probes where a missing device is an
- * expected condition rather than a fatal error.
- */
-int i2c_read_quiet(uint8_t addr, uint8_t *data, size_t len)
-{
-    if (i2c_start_read_common(addr, data, len, 1) < 0)
+    if (i2c_start_read(addr, data, len) < 0)
     {
         return -1;
     }
@@ -528,37 +490,6 @@ int i2c_write_read(uint8_t addr,
 }
 
 /*
- * Perform a write followed by a read without error debug output.
- *
- * This variant is used for optional peripherals that may not be present.
- */
-int i2c_write_read_quiet(uint8_t addr,
-                         const uint8_t *tx_data,
-                         size_t tx_len,
-                         uint8_t *rx_data,
-                         size_t rx_len)
-{
-    if (!tx_data || tx_len == 0 || !rx_data || rx_len == 0)
-    {
-        return -1;
-    }
-
-    if (i2c_write_quiet(addr, tx_data, tx_len) < 0)
-    {
-        return -1;
-    }
-
-    i2c_reset_controller();
-
-    if (i2c_read_quiet(addr, rx_data, rx_len) < 0)
-    {
-        return -1;
-    }
-
-    return 0;
-}
-
-/*
  * Write a single 8-bit value to a register.
  *
  * Convenience helper for typical register-based I2C devices.
@@ -589,21 +520,6 @@ int i2c_read_reg8(uint8_t addr, uint8_t reg, uint8_t *value)
 }
 
 /*
- * Read a single 8-bit register value without error debug output.
- *
- * Intended for optional hardware detection and polling.
- */
-int i2c_read_reg8_quiet(uint8_t addr, uint8_t reg, uint8_t *value)
-{
-    if (!value)
-    {
-        return -1;
-    }
-
-    return i2c_write_read_quiet(addr, &reg, 1, value, 1);
-}
-
-/*
  * I2C interrupt handler.
  *
  * Handles the full transfer lifecycle:
@@ -627,10 +543,7 @@ void i2c_handle_irq(void)
 
     if (status & (BSC_S_ERR | BSC_S_CLKT))
     {
-        if (!i2c_transfer.quiet)
-        {
-            i2c_debug_status("irq-error", status);
-        }
+        i2c_debug_status("irq-error", status);
         i2c_reset_controller();
         i2c_finish_transfer(-1);
         return;
@@ -649,10 +562,7 @@ void i2c_handle_irq(void)
 
     if (status & (BSC_S_ERR | BSC_S_CLKT))
     {
-        if (!i2c_transfer.quiet)
-        {
-            i2c_debug_status("irq-post-service-error", status);
-        }
+        i2c_debug_status("irq-post-service-error", status);
         i2c_reset_controller();
         i2c_finish_transfer(-1);
         return;

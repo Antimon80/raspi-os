@@ -64,7 +64,7 @@ static int led_matrix_pixel_base_index(int x, int y)
 int led_matrix_init(void)
 {
     led_matrix_clear();
-    return i2c_write_quiet(SENSEHAT_ADDR, (const uint8_t[]){0x00}, 1);
+    return led_matrix_present();
 }
 
 /*
@@ -160,11 +160,12 @@ int led_matrix_present(void)
     }
 
     i2c_bus_lock();
-    rc = i2c_write_quiet(SENSEHAT_ADDR, tx, sizeof(tx));
+    rc = i2c_write(SENSEHAT_ADDR, tx, sizeof(tx));
     i2c_bus_unlock();
 
     if (rc < 0)
     {
+        uart_puts("led_matrix: present failed\n");
         return -1;
     }
 

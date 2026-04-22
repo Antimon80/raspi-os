@@ -21,9 +21,9 @@
 void main(void)
 {
     uart_init();
-    hdmi_init();
-    hdmi_show_bootscreen();
-    hdmi_clear_console();
+    // hdmi_init();
+    // hdmi_show_bootscreen();
+    // hdmi_clear_console();
 
     uart_puts("Boot OK\n");
     uart_puts("UART OK\n");

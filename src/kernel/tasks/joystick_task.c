@@ -35,8 +35,10 @@ void joystick_task(void)
 {
     if (joystick_init() < 0)
     {
-        uart_puts("joystick task: Sense HAT joystick not detected, disabling task\n");
-        return;
+        while (1)
+        {
+            task_block_current();
+        }
     }
 
     joy_menu_init();
