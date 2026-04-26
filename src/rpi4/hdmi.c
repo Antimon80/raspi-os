@@ -1,6 +1,7 @@
 #include "rpi4/hdmi.h"
 #include "rpi4/hdmi_font.h"
 #include "rpi4/mmio.h"
+#include "kernel/irq.h"
 
 /*
  * HDMI output is implemented via the firmware mailbox property channel.
@@ -85,6 +86,8 @@ static uint32_t cursor_x = 0;
 static uint32_t cursor_y = 0;
 static uint32_t status_dot_x = 0;
 static uint32_t status_dot_y = 0;
+static uint32_t text_fg = CONSOLE_FG;
+static uint32_t text_bg = CONSOLE_PANEL;
 
 static int mailbox_call(uint8_t channel);
 static char hdmi_normalize_char(char c);
@@ -376,7 +379,7 @@ static void hdmi_draw_cursor(uint32_t visible)
     x = console_origin_x + (cursor_x * CHAR_ADVANCE_X);
     y = console_origin_y + (cursor_y * CHAR_ADVANCE_Y);
     h = (GLYPH_HEIGHT * GLYPH_SCALE) + 2u;
-    color = visible ? CONSOLE_ACCENT : CONSOLE_PANEL;
+    color = visible ? CONSOLE_ACCENT : text_bg;
 
     hdmi_fill_rect(x + (GLYPH_WIDTH * GLYPH_SCALE) + 1u, y + 2u, 3u, h, color);
 }
@@ -554,10 +557,18 @@ static void hdmi_newline(void)
 
 /*
  * Submit a property mailbox request and wait for the response.
+ *
+ * IRQs are disabled for the duration of the mailbox transaction to prevent
+ * the I2C (or any other peripheral) IRQ handler from racing against the
+ * mailbox read/write sequence. The VideoCore property channel shares the
+ * same interrupt controller, so an unrelated IRQ firing mid-transaction
+ * can corrupt the response check.
  */
 static int mailbox_call(uint8_t channel)
 {
     uint32_t message = (((uint32_t)(uintptr_t)mailbox) & ~0xFu) | (uint32_t)(channel & 0xFu);
+
+    irq_disable();
 
     while (mmio_read(MAILBOX_STATUS) & MAILBOX_STATUS_FULL)
     {
@@ -573,6 +584,7 @@ static int mailbox_call(uint8_t channel)
 
         if (mmio_read(MAILBOX_READ) == message)
         {
+            irq_enable();
             return mailbox[1] == MAILBOX_RESPONSE_OK;
         }
     }
@@ -662,6 +674,43 @@ int hdmi_init(void)
     return 1;
 }
 
+void hdmi_set_text_colors(uint32_t fg, uint32_t bg)
+{
+    text_fg = fg;
+    text_bg = bg;
+}
+
+void hdmi_reset_text_colors(void)
+{
+    text_fg = CONSOLE_FG;
+    text_bg = CONSOLE_PANEL;
+}
+
+void hdmi_set_cursor(uint32_t column, uint32_t row)
+{
+    if (!framebuffer || console_columns == 0u || console_rows == 0u)
+    {
+        return;
+    }
+
+    hdmi_draw_cursor(0u);
+
+    if (column >= console_columns)
+    {
+        column = console_columns - 1u;
+    }
+
+    if (row >= console_rows)
+    {
+        row = console_rows - 1u;
+    }
+
+    cursor_x = column;
+    cursor_y = row;
+
+    hdmi_draw_cursor(1u);
+}
+
 /*
  * Draw one character into the HDMI text console.
  * Control characters for newline, tab and backspace are handled explicitly.
@@ -698,7 +747,7 @@ void hdmi_putc(char c)
 
         px = console_origin_x + (cursor_x * CHAR_ADVANCE_X);
         py = console_origin_y + (cursor_y * CHAR_ADVANCE_Y);
-        hdmi_fill_rect(px, py, CHAR_ADVANCE_X, CHAR_ADVANCE_Y, CONSOLE_PANEL);
+        hdmi_fill_rect(px, py, CHAR_ADVANCE_X, CHAR_ADVANCE_Y, text_bg);
         hdmi_draw_cursor(1u);
         return;
     }
@@ -722,7 +771,7 @@ void hdmi_putc(char c)
 
     px = console_origin_x + (cursor_x * CHAR_ADVANCE_X);
     py = console_origin_y + (cursor_y * CHAR_ADVANCE_Y);
-    hdmi_draw_char_at(px, py, c, CONSOLE_FG, CONSOLE_PANEL);
+    hdmi_draw_char_at(px, py, c, text_fg, text_bg);
     cursor_x++;
 
     if (cursor_x >= console_columns)
@@ -746,6 +795,9 @@ void hdmi_puts(const char *s)
 
 /*
  * Show the short animated HDMI bootscreen.
+ *
+ * Called before the scheduler is running, so a plain busy-wait is used.
+ * No scheduler_yield() here – there are no runnable tasks yet.
  */
 void hdmi_show_bootscreen(void)
 {
@@ -775,6 +827,7 @@ void hdmi_clear_console(void)
         return;
     }
 
+    hdmi_reset_text_colors();
     hdmi_draw_console_chrome();
     hdmi_draw_cursor(1u);
 }

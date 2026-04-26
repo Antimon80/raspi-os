@@ -133,6 +133,7 @@ static void handle_gpio_irq(void)
     }
 
     gpio_clear_event(JOYSTICK_INT_GPIO);
+    joystick_signal_irq();
 
     joystick_id = joystick_get_task_id();
     if (joystick_id >= 0)

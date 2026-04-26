@@ -45,10 +45,12 @@ static int uart_rx_task_id = -1;
 
 static mutex_t uart_tx_mutex;
 static int uart_tx_lock_ready = 0;
+static int uart_hdmi_mirror_enabled = 1;
 
 static uint32_t uart_can_write(void);
 static unsigned int uart_data_ready(void);
 static void uart_write_byte(char c);
+static void uart_write_console_byte(char c);
 
 static int uart_lock_tx(void)
 {
@@ -87,6 +89,31 @@ static void uart_write_byte(char c)
     }
 
     mmio_write(AUX_MU_IO_REG, (uint32_t)c);
+}
+
+/*
+ * Write one visible console character to all active output backends.
+ *
+ * UART remains the primary transport; HDMI mirrors the same character
+ * when the framebuffer console has been initialized.
+ */
+static void uart_write_console_byte(char c)
+{
+    uart_write_byte(c);
+    if (uart_hdmi_mirror_enabled)
+    {
+        hdmi_putc(c);
+    }
+}
+
+void uart_set_hdmi_mirror(int enabled)
+{
+    uart_hdmi_mirror_enabled = enabled ? 1 : 0;
+}
+
+int uart_get_hdmi_mirror(void)
+{
+    return uart_hdmi_mirror_enabled;
 }
 
 /*
@@ -174,7 +201,7 @@ void uart_init_tx_lock(void)
 void uart_putc(char c)
 {
     int locked = uart_lock_tx();
-    uart_write_byte(c);
+    uart_write_console_byte(c);
     uart_unlock_tx(locked);
 }
 
@@ -200,7 +227,7 @@ void uart_puts(const char *s)
             uart_write_byte('\r');
         }
 
-        uart_write_byte(*s++);
+        uart_write_console_byte(*s++);
     }
 
     uart_unlock_tx(locked);
@@ -283,7 +310,7 @@ void uart_put_uint(unsigned int value)
 
     if (value == 0)
     {
-        uart_write_byte('0');
+        uart_write_console_byte('0');
         uart_unlock_tx(locked);
         return;
     }
@@ -296,7 +323,7 @@ void uart_put_uint(unsigned int value)
 
     while (i > 0)
     {
-        uart_write_byte(buffer[--i]);
+        uart_write_console_byte(buffer[--i]);
     }
 
     uart_unlock_tx(locked);
@@ -316,7 +343,7 @@ void uart_put_u64(uint64_t value)
 
     for (int i = 0; buffer[i] != '\0'; i++)
     {
-        uart_write_byte(buffer[i]);
+        uart_write_console_byte(buffer[i]);
     }
 
     uart_unlock_tx(locked);
@@ -334,12 +361,12 @@ void uart_put_hex_uintptr(uintptr_t value)
 
     locked = uart_lock_tx();
 
-    uart_write_byte('0');
-    uart_write_byte('x');
+    uart_write_console_byte('0');
+    uart_write_console_byte('x');
 
     for (int i = 0; buffer[i] != '\0'; i++)
     {
-        uart_write_byte(buffer[i]);
+        uart_write_console_byte(buffer[i]);
     }
 
     uart_unlock_tx(locked);
@@ -350,10 +377,10 @@ void uart_put_hex8(uint8_t value)
     const char *hex = "0123456789ABCDEF";
     int locked = uart_lock_tx();
 
-    uart_write_byte('0');
-    uart_write_byte('x');
-    uart_write_byte(hex[(value >> 4) & 0xF]);
-    uart_write_byte(hex[value & 0xF]);
+    uart_write_console_byte('0');
+    uart_write_console_byte('x');
+    uart_write_console_byte(hex[(value >> 4) & 0xF]);
+    uart_write_console_byte(hex[value & 0xF]);
 
     uart_unlock_tx(locked);
 }

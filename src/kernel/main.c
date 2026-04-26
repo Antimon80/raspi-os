@@ -28,6 +28,16 @@ void main(void)
     i2c_init();
     i2c_bus_init();
 
+    if (hdmi_init())
+    {
+        hdmi_show_bootscreen();
+        hdmi_clear_console();
+    }
+    else
+    {
+        uart_puts("HDMI init failed\n");
+    }
+
     task_init_system();
     scheduler_init();
 

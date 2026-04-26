@@ -44,6 +44,8 @@ static const joy_menu_entry_t menu_entries[] =
     {
         {"help", "help"},
         {"ps", "ps"},
+        {"start tictactoe", "start tictactoe"},
+        {"stop tictactoe", "stop tictactoe"},
         {"start heart", "start heart"},
         {"stop heart", "stop heart"},
         {"start fast", "start fast"},
@@ -109,10 +111,11 @@ static void joy_menu_render(void)
  */
 void joy_menu_init(void)
 {
-    menu_state.active = 0;
+    menu_state.active = 1;
     menu_state.selected = 0;
     menu_state.center_pressed = 0;
     menu_state.center_press_tick = 0;
+    joy_menu_render();
 }
 
 /*

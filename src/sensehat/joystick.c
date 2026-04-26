@@ -35,6 +35,7 @@ static uint8_t joystick_prev_state = 0;
 static joy_event_t joystick_event_queue[JOY_EVENT_QUEUE_SIZE];
 static volatile uint32_t joystick_event_head = 0;
 static volatile uint32_t joystick_event_tail = 0;
+static volatile int joystick_irq_pending = 0;
 
 /*
  * Return non-zero if the event queue is empty.
@@ -54,6 +55,25 @@ static int joystick_queue_is_empty(void)
 static int joystick_queue_is_full(void)
 {
     return ((joystick_event_head + 1) % JOY_EVENT_QUEUE_SIZE) == joystick_event_tail;
+}
+
+void joystick_signal_irq(void)
+{
+    irq_disable();
+    joystick_irq_pending = 1;
+    irq_enable();
+}
+
+int joystick_consume_irq(void)
+{
+    int pending;
+
+    irq_disable();
+    pending = joystick_irq_pending;
+    joystick_irq_pending = 0;
+    irq_enable();
+
+    return pending;
 }
 
 /*
@@ -104,7 +124,8 @@ static void joystick_enqueue_event(joy_event_t event)
  */
 static void joystick_init_interrupt(void)
 {
-    gpio_use_as_input(JOYSTICK_INT_GPIO);
+    gpio_set_pull(JOYSTICK_INT_GPIO, GPIO_PULL_UP);
+    gpio_set_function(JOYSTICK_INT_GPIO, GPIO_FUNC_INPUT);
 
     gpio_disable_rising_edge(JOYSTICK_INT_GPIO);
     gpio_disable_falling_edge(JOYSTICK_INT_GPIO);
@@ -212,6 +233,7 @@ int joystick_init(void)
 
     joystick_event_head = 0;
     joystick_event_tail = 0;
+    joystick_irq_pending = 0;
 
     i2c_bus_lock();
     rc = i2c_read_reg8(SENSEHAT_ADDR, JOYSTICK_KEYS_REG, &joystick_prev_state);
