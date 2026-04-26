@@ -41,10 +41,6 @@ void main(void)
     task_init_system();
     scheduler_init();
 
-    uart_init_tx_lock();
-
-    uart_puts("Kernel initialized\n");
-
     int shell_id = task_create_system(shell_task, "shell");
     if (shell_id < 0)
     {
@@ -71,11 +67,11 @@ void main(void)
     gic_init();
     timer_init(100); // 100 Hz = 10 ms per tick
 
+    uart_init_tx_lock();
+
     irq_enable();
 
-    uart_puts("IRQ ready\n");
-    uart_puts("Timer ready\n");
-    uart_puts("Starting scheduler...\n");
+    uart_puts("Kernel initialized\n");
 
     scheduler_start();
 

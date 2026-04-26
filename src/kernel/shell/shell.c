@@ -357,9 +357,15 @@ static void shell_cmd_log_clear_arg(const char *arg)
 void shell_cmd_trace_dump(void)
 {
     trace_event_t ev;
+    int count = trace_count();
 
-    while (trace_pop(&ev) == 0)
+    for (int i = 0; i < count; i++)
     {
+        if (trace_pop(&ev) < 0)
+        {
+            break;
+        }
+
         uart_puts("[t=");
         uart_put_uint((unsigned int)ev.tick);
         uart_puts("] ");

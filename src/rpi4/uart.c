@@ -6,6 +6,7 @@
 #include "kernel/sched/task.h"
 #include "kernel/irq.h"
 #include "kernel/sync/mutex.h"
+#include "kernel/sync/cond.h"
 
 /* Base address of peripheral MMIO region (Raspberry Pi 4 BCM2711) */
 #define PERIPHERAL_BASE ((uintptr_t)0xFE000000)
@@ -50,17 +51,15 @@
 #define AUX_MU_LSR_TX_READY 0x20u
 
 /*
- * RX and TX software buffers.
- *
- * RX:
- *   Written by UART IRQ handler.
- *   Read by task context.
- *
- * TX:
- *   Written by task context.
- *   Drained by UART IRQ handler.
+ * RX is filled by the UART IRQ handler and consumed by task context.
+ * Access from task context is protected by disabling IRQs.
  */
 #define UART_RX_BUFFER_SIZE 128
+
+/*
+ * TX is filled by task context and drained by the UART IRQ handler.
+ * Writers are serialized by uart_tx_mutex once the scheduler is running.
+ */
 #define UART_TX_BUFFER_SIZE 512
 
 static volatile char uart_rx_buffer[UART_RX_BUFFER_SIZE];
@@ -76,21 +75,16 @@ static volatile unsigned int uart_tx_tail = 0;
 static int uart_rx_task_id = -1;
 
 /*
- * At most one task waits for TX space at a time.
- *
- * Public uart_put* functions are serialized by uart_tx_mutex, so only one
- * writer can fill the TX buffer and block on space.
+ * Serializes task-context UART output and lets writers sleep while
+ * the TX ring buffer is full.
  */
-static int uart_tx_wait_task_id = -1;
-
 static mutex_t uart_tx_mutex;
+static cond_t uart_tx_not_full;
 static int uart_tx_lock_ready = 0;
 
 /*
- * Lock UART TX output if the scheduler and mutex system are ready.
- *
- * Before the scheduler is running, UART is used for early boot output and
- * must remain directly usable.
+ * Lock TX output only after scheduler synchronization is available.
+ * Early boot output still uses direct polling.
  */
 static int uart_lock_tx(void)
 {
@@ -167,32 +161,6 @@ static int uart_tx_buffer_empty(void)
 }
 
 /*
- * Return non-zero if the TX software buffer is full.
- *
- * Caller must either run in IRQ context or hold interrupts disabled.
- */
-static int uart_tx_buffer_full(void)
-{
-    unsigned int next = (uart_tx_head + 1u) % UART_TX_BUFFER_SIZE;
-    return next == uart_tx_tail;
-}
-
-/*
- * Wake the blocked TX writer once the software TX buffer has space again.
- *
- * Caller must either run in IRQ context or hold interrupts disabled.
- */
-static void uart_tx_wake_writer(void)
-{
-    if (uart_tx_wait_task_id >= 0 && !uart_tx_buffer_full())
-    {
-        int id = uart_tx_wait_task_id;
-        uart_tx_wait_task_id = -1;
-        task_wakeup(id);
-    }
-}
-
-/*
  * Push one byte into the TX software buffer.
  *
  * Returns 1 on success, 0 if the buffer is full.
@@ -231,13 +199,8 @@ static int uart_tx_pop(char *c)
 }
 
 /*
- * Drain pending TX bytes into the hardware FIFO.
- *
- * Called from the UART IRQ handler and also from task context with interrupts
- * disabled after new data has been queued.
- *
- * If at least one byte is removed from the software TX buffer, a blocked
- * writer can be woken because space is available again.
+ * Move queued TX bytes into the hardware FIFO.
+ * Called from the UART IRQ handler and from task context with IRQs disabled.
  */
 static void uart_tx_drain(void)
 {
@@ -249,39 +212,36 @@ static void uart_tx_drain(void)
         if (!uart_tx_pop(&c))
         {
             uart_disable_tx_irq();
-            uart_tx_wake_writer();
-            return;
+            break;
         }
 
         mmio_write(AUX_MU_IO_REG, (uint32_t)c);
         made_space = 1;
     }
 
-    if (made_space)
-    {
-        uart_tx_wake_writer();
-    }
-
     if (uart_tx_buffer_empty())
     {
         uart_disable_tx_irq();
     }
+    else
+    {
+        uart_enable_tx_irq();
+    }
+
+    if (made_space)
+    {
+        cond_signal_irq_disabled(&uart_tx_not_full);
+    }
 }
 
 /*
- * Scheduler-aware byte output.
- *
- * In normal task context, the byte is queued into the TX software buffer and
- * sent by the UART TX interrupt. If the software buffer is full, the current
- * task is marked BLOCKED and resumed once the IRQ handler has freed space.
+ * Queue one byte for interrupt-driven TX.
+ * If the TX ring is full, the current writer sleeps until space is available.
  */
 static void uart_write_byte(char c)
 {
-    int id;
-    task_t *task;
-
     // before the scheduler is active, keep direct boot output working
-    if (scheduler_current_task_id() < 0)
+    if (!uart_tx_lock_ready || scheduler_current_task_id() < 0)
     {
         while (!uart_can_write())
         {
@@ -307,48 +267,9 @@ static void uart_write_byte(char c)
             return;
         }
 
-        id = scheduler_current_task_id();
-
-        if (id < 0)
-        {
-            irq_enable();
-            while (!uart_can_write())
-            {
-            }
-
-            mmio_write(AUX_MU_IO_REG, (uint32_t)c);
-            return;
-        }
-
-        task = task_get(id);
-
-        if (!task)
-        {
-            irq_enable();
-            return;
-        }
-
-        uart_tx_wait_task_id = id;
-
+        // TX ring is full
         uart_enable_tx_irq();
-        uart_tx_drain();
-
-        if (!uart_tx_buffer_full())
-        {
-            if (uart_tx_wait_task_id == id)
-            {
-                uart_tx_wait_task_id = -1;
-            }
-
-            irq_enable();
-            continue;
-        }
-
-        task->state = BLOCKED;
-
-        irq_enable();
-
-        scheduler_yield();
+        cond_wait_irq_disabled(&uart_tx_not_full, &uart_tx_mutex);
     }
 }
 
@@ -381,13 +302,12 @@ void uart_init(void)
 }
 
 /*
- * Enable serialized TX output.
- *
- * Call this after task_init_system() and scheduler_init().
+ * Enable scheduler-aware UART TX locking.
  */
 void uart_init_tx_lock(void)
 {
     mutex_init(&uart_tx_mutex);
+    cond_init(&uart_tx_not_full);
     uart_tx_lock_ready = 1;
 }
 
@@ -468,6 +388,9 @@ int uart_read_char(char *c)
     }
 }
 
+/*
+ * Non-blocking RX read.
+ */
 int uart_try_read_char(char *c)
 {
     int result = 0;

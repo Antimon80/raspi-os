@@ -20,16 +20,6 @@ void i2c_bus_lock(void)
 }
 
 /*
- * Try to acquire exclusive access to the I2C bus.
- *
- * Returns 1 on success, 0 otherwise.
- */
-int i2c_bus_try_lock(void)
-{
-    return mutex_try_lock(&i2c_bus_mutex);
-}
-
-/*
  * Release exclusive access to the I2C bus.
  */
 void i2c_bus_unlock(void)
