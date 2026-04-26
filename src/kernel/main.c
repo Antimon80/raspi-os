@@ -13,6 +13,7 @@
 #include "kernel/memory/heap.h"
 #include "kernel/memory/log.h"
 #include "kernel/tasks/joystick_task.h"
+#include "kernel/tasks/led_task.h"
 
 /*
  * Kernel entry point.
@@ -56,6 +57,13 @@ void main(void)
         kernel_panic("Failed to create joystick task\n");
     }
     joystick_register_task_id(joystick_id);
+
+    int led_id = task_create_system(led_task, "led");
+    if (led_id < 0)
+    {
+        kernel_panic("Failed to create LED task\n");
+    }
+    led_register_task_id(led_id);
 
     irq_init();
     gic_init();

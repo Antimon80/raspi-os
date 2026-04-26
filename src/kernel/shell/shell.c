@@ -6,6 +6,7 @@
 #include "kernel/tasks/demo_task.h"
 #include "kernel/tasks/tictactoe_task.h"
 #include "kernel/tasks/gol_task.h"
+#include "kernel/tasks/led_task.h"
 #include "kernel/debug/trace.h"
 #include "sensehat/led_matrix.h"
 #include "rpi4/uart.h"
@@ -252,6 +253,11 @@ void shell_cmd_start_arg(const char *name)
         return;
     }
 
+    if (str_equals(name, "gol"))
+    {
+        gol_register_task_id(id);
+    }
+
     uart_puts("task started with id ");
     uart_put_uint((unsigned int)id);
     uart_puts("\n");
@@ -283,7 +289,11 @@ void shell_cmd_stop_id(int id)
         return;
     }
 
-    led_matrix_release(id);
+    if (id == gol_get_task_id())
+    {
+        led_submit_clear_frame();
+        gol_register_task_id(-1);
+    }
 
     uart_puts("stop requested for task ");
     uart_put_uint((unsigned int)id);

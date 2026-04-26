@@ -1,8 +1,8 @@
 #include "kernel/tasks/gol_task.h"
+#include "kernel/tasks/led_task.h"
 #include "kernel/timer.h"
-#include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
-#include "sensehat/led_matrix.h"
+#include "kernel/sched/scheduler.h"
 #include "rpi4/uart.h"
 #include <stdint.h>
 
@@ -10,8 +10,9 @@
 #define HEIGHT 8
 #define FRAME_DELAY_TICKS 12
 #define MAX_AGE 7
+#define RESEED_AFTER_FRAMES 120
 
-static int led_task_id = -1;
+static int gol_task_id = -1;
 
 /*
  * A cell is alive if age > 0.
@@ -24,6 +25,7 @@ static uint8_t next[HEIGHT][WIDTH];
  * Very small PRNG state for demo reseeding.
  */
 static uint32_t rng_state = 0x12345678u;
+static uint32_t generation_count = 0;
 
 /*
  * Return a pseudo-random 32-bit value.
@@ -178,8 +180,6 @@ static int gol_any_alive(void)
  */
 static void gol_seed_glider(void)
 {
-    gol_clear_grid(current);
-
     current[1][2] = 1;
     current[2][3] = 1;
     current[3][1] = 1;
@@ -192,8 +192,6 @@ static void gol_seed_glider(void)
  */
 static void gol_seed_explorer(void)
 {
-    gol_clear_grid(current);
-
     current[2][3] = 1;
     current[1][2] = 1;
     current[1][3] = 1;
@@ -208,8 +206,6 @@ static void gol_seed_explorer(void)
  */
 static void gol_seed_ship(void)
 {
-    gol_clear_grid(current);
-
     current[1][2] = 1;
     current[1][5] = 1;
     current[2][1] = 1;
@@ -226,8 +222,6 @@ static void gol_seed_ship(void)
  */
 static void gol_seed_random(void)
 {
-    gol_clear_grid(current);
-
     for (int y = 0; y < HEIGHT; y++)
     {
         for (int x = 0; x < WIDTH; x++)
@@ -247,7 +241,9 @@ static void gol_seed_pattern(void)
 {
     uint32_t choice = (gol_rand() >> 16) % 4u;
 
+    gol_clear_grid(current);
     gol_clear_grid(next);
+    generation_count = 0;
 
     switch (choice)
     {
@@ -345,15 +341,17 @@ static led_matrix_color_t gol_color_for_age(uint8_t age)
  */
 static void gol_render(void)
 {
+    led_frame_t frame;
+
     for (int y = 0; y < HEIGHT; y++)
     {
         for (int x = 0; x < WIDTH; x++)
         {
-            led_matrix_set_pixel(x, y, gol_color_for_age(current[y][x]));
+            frame.pixels[y][x] = gol_color_for_age(current[y][x]);
         }
     }
 
-    led_matrix_present();
+    led_submit_frame(&frame);
 }
 
 /*
@@ -361,7 +359,7 @@ static void gol_render(void)
  */
 void gol_register_task_id(int id)
 {
-    led_task_id = id;
+    gol_task_id = id;
 }
 
 /*
@@ -369,7 +367,7 @@ void gol_register_task_id(int id)
  */
 int gol_get_task_id(void)
 {
-    return led_task_id;
+    return gol_task_id;
 }
 
 /*
@@ -377,28 +375,8 @@ int gol_get_task_id(void)
  */
 void gol_task(void)
 {
-    if (led_matrix_acquire() < 0)
-    {
-        uart_puts("gol: LED matrix already in use\n");
-        while (1)
-        {
-            task_block_current();
-        }
-    }
+    uart_puts("gol: started:\n");
 
-    if (led_matrix_init() < 0)
-    {
-        uart_puts("gol: matrix init failed\n");
-        led_matrix_release(scheduler_current_task_id());
-        while (1)
-        {
-            task_block_current();
-        }
-    }
-
-    uart_puts("gol: started\n");
-
-    // mix in current tick count to vary the initial seed betwwen runs
     rng_state ^= (uint32_t)timer_get_ticks();
 
     gol_seed_pattern();
@@ -409,9 +387,9 @@ void gol_task(void)
         task_sleep(FRAME_DELAY_TICKS);
 
         gol_step();
+        generation_count++;
 
-        // reseed if the board died out or became fully stable
-        if (!gol_any_alive() || gol_grids_equal(current, next))
+        if (!gol_any_alive() || gol_grids_equal(current, next) || generation_count >= RESEED_AFTER_FRAMES)
         {
             gol_seed_pattern();
         }
