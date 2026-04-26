@@ -484,7 +484,7 @@ void shell_task(void)
     {
         char c;
 
-        uart_read_char_blocking(&c);
+        uart_read_char(&c);
 
         if (c == '\r' || c == '\n')
         {

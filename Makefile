@@ -4,12 +4,12 @@ INC_DIR   := include
 ARCH_DIR  := $(SRC_DIR)/arch
 
 # Toolchain from PATH
-CC      := aarch64-elf-gcc
-LD      := aarch64-elf-ld
-OBJCOPY := aarch64-elf-objcopy
+CC      := aarch64-none-elf-gcc
+LD      := aarch64-none-elf-ld
+OBJCOPY := aarch64-none-elf-objcopy
 
 CPU     := cortex-a72
-CFLAGS  := -Wall -O2 -ffreestanding -nostdlib -nostartfiles -mstrict-align -mcpu=$(CPU) -mgeneral-regs-only -I$(INC_DIR)
+CFLAGS  := -Wall -O2 -ffreestanding -nostdlib -nostartfiles -mstrict-align -mcpu=$(CPU) -I$(INC_DIR)
 ASFLAGS := $(CFLAGS)
 LDFLAGS := -T link.ld -nostdlib
 

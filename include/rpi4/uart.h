@@ -5,8 +5,6 @@
 
 void uart_init(void);
 void uart_init_tx_lock(void);
-void uart_set_hdmi_mirror(int enabled);
-int uart_get_hdmi_mirror(void);
 
 void uart_set_rx_task(int task_id);
 int uart_get_rx_task(void);
@@ -20,7 +18,7 @@ void uart_put_hex_uintptr(uintptr_t value);
 void uart_put_hex8(uint8_t value);
 
 int uart_read_char(char *c);
-int uart_read_char_blocking(char *c);
+int uart_try_read_char(char *c);
 
 void uart_handle_irq(void);
 

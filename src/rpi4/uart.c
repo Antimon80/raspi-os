@@ -1,5 +1,4 @@
 #include "rpi4/uart.h"
-#include "rpi4/hdmi.h"
 #include "rpi4/mmio.h"
 #include "rpi4/gpio.h"
 #include "util/convert.h"
@@ -33,25 +32,66 @@
 #define AUX_MU_BAUD(baud) ((AUX_UART_CLOCK / ((baud) * 8)) - 1)
 
 /*
- * Simple ring buffer for received UART characters.
- * Characters are written by the interrupt handler and read by normal code.
+ * Mini UART interrupt enable bits.
+ *
+ * Bit 0: RX interrupt enable
+ * Bit 1: TX interrupt enable
  */
-#define UART_BUFFER_SIZE 128
+#define AUX_MU_IER_RX_ENABLE 0x01u
+#define AUX_MU_IER_TX_ENABLE 0x02u
 
-static volatile char uart_buffer[UART_BUFFER_SIZE];
-static volatile unsigned int uart_head = 0;
-static volatile unsigned int uart_tail = 0;
+/*
+ * Line Status Register bits.
+ *
+ * Bit 0: RX data ready
+ * Bit 5: TX FIFO can accept at least one byte
+ */
+#define AUX_MU_LSR_RX_READY 0x01u
+#define AUX_MU_LSR_TX_READY 0x20u
+
+/*
+ * RX and TX software buffers.
+ *
+ * RX:
+ *   Written by UART IRQ handler.
+ *   Read by task context.
+ *
+ * TX:
+ *   Written by task context.
+ *   Drained by UART IRQ handler.
+ */
+#define UART_RX_BUFFER_SIZE 128
+#define UART_TX_BUFFER_SIZE 512
+
+static volatile char uart_rx_buffer[UART_RX_BUFFER_SIZE];
+static volatile unsigned int uart_rx_head = 0;
+static volatile unsigned int uart_rx_tail = 0;
+
+static volatile char uart_tx_buffer[UART_TX_BUFFER_SIZE];
+static volatile unsigned int uart_tx_head = 0;
+static volatile unsigned int uart_tx_tail = 0;
+/*
+ * Task woken when RX data arrives.
+ */
 static int uart_rx_task_id = -1;
+
+/*
+ * At most one task waits for TX space at a time.
+ *
+ * Public uart_put* functions are serialized by uart_tx_mutex, so only one
+ * writer can fill the TX buffer and block on space.
+ */
+static int uart_tx_wait_task_id = -1;
 
 static mutex_t uart_tx_mutex;
 static int uart_tx_lock_ready = 0;
-static int uart_hdmi_mirror_enabled = 1;
 
-static uint32_t uart_can_write(void);
-static unsigned int uart_data_ready(void);
-static void uart_write_byte(char c);
-static void uart_write_console_byte(char c);
-
+/*
+ * Lock UART TX output if the scheduler and mutex system are ready.
+ *
+ * Before the scheduler is running, UART is used for early boot output and
+ * must remain directly usable.
+ */
 static int uart_lock_tx(void)
 {
     if (!uart_tx_lock_ready)
@@ -77,82 +117,239 @@ static void uart_unlock_tx(int locked)
 }
 
 /*
- * Internal byte output.
- *
- * This function is intentionally not exported and does not lock.
- * Public uart_put* functions are responsible for synchronization.
- */
-static void uart_write_byte(char c)
-{
-    while (!uart_can_write())
-    {
-    }
-
-    mmio_write(AUX_MU_IO_REG, (uint32_t)c);
-}
-
-/*
- * Write one visible console character to all active output backends.
- *
- * UART remains the primary transport; HDMI mirrors the same character
- * when the framebuffer console has been initialized.
- */
-static void uart_write_console_byte(char c)
-{
-    uart_write_byte(c);
-    if (uart_hdmi_mirror_enabled)
-    {
-        hdmi_putc(c);
-    }
-}
-
-void uart_set_hdmi_mirror(int enabled)
-{
-    uart_hdmi_mirror_enabled = enabled ? 1 : 0;
-}
-
-int uart_get_hdmi_mirror(void)
-{
-    return uart_hdmi_mirror_enabled;
-}
-
-/*
- * Register the task that should be woken when UART RX data arrives.
- */
-void uart_set_rx_task(int task_id)
-{
-    uart_rx_task_id = task_id;
-}
-
-int uart_get_rx_task(void)
-{
-    return uart_rx_task_id;
-}
-
-void uart_flush_rx(void)
-{
-    irq_disable();
-    uart_head = 0;
-    uart_tail = 0;
-    irq_enable();
-}
-
-/*
  * Check whether the UART transmit FIFO can accept a new byte.
- * Bit 5 of the Line Status Register indicates TX readiness.
  */
 static uint32_t uart_can_write(void)
 {
-    return mmio_read(AUX_MU_LSR_REG) & 0x20;
+    return mmio_read(AUX_MU_LSR_REG) & AUX_MU_LSR_TX_READY;
 }
 
 /*
  * Check whether at least one received byte is available.
- * LSR bit 0 = data ready.
  */
 static unsigned int uart_data_ready(void)
 {
-    return mmio_read(AUX_MU_LSR_REG) & 0x01;
+    return mmio_read(AUX_MU_LSR_REG) & AUX_MU_LSR_RX_READY;
+}
+
+/*
+ * Enable UART TX interrupts.
+ *
+ * RX interrupt enable is preserved.
+ */
+static void uart_enable_tx_irq(void)
+{
+    uint32_t ier = mmio_read(AUX_MU_IER_REG);
+    ier |= AUX_MU_IER_TX_ENABLE;
+    mmio_write(AUX_MU_IER_REG, ier);
+}
+
+/*
+ * Disable UART TX interrupts.
+ *
+ * RX interrupt enable is preserved.
+ */
+static void uart_disable_tx_irq(void)
+{
+    uint32_t ier = mmio_read(AUX_MU_IER_REG);
+    ier &= ~AUX_MU_IER_TX_ENABLE;
+    mmio_write(AUX_MU_IER_REG, ier);
+}
+
+/*
+ * Return non-zero if the TX software buffer is empty.
+ *
+ * Caller must either run in IRQ context or hold interrupts disabled.
+ */
+static int uart_tx_buffer_empty(void)
+{
+    return uart_tx_head == uart_tx_tail;
+}
+
+/*
+ * Return non-zero if the TX software buffer is full.
+ *
+ * Caller must either run in IRQ context or hold interrupts disabled.
+ */
+static int uart_tx_buffer_full(void)
+{
+    unsigned int next = (uart_tx_head + 1u) % UART_TX_BUFFER_SIZE;
+    return next == uart_tx_tail;
+}
+
+/*
+ * Wake the blocked TX writer once the software TX buffer has space again.
+ *
+ * Caller must either run in IRQ context or hold interrupts disabled.
+ */
+static void uart_tx_wake_writer(void)
+{
+    if (uart_tx_wait_task_id >= 0 && !uart_tx_buffer_full())
+    {
+        int id = uart_tx_wait_task_id;
+        uart_tx_wait_task_id = -1;
+        task_wakeup(id);
+    }
+}
+
+/*
+ * Push one byte into the TX software buffer.
+ *
+ * Returns 1 on success, 0 if the buffer is full.
+ * Caller must either run in IRQ context or hold interrupts disabled.
+ */
+static int uart_tx_push(char c)
+{
+    unsigned int next = (uart_tx_head + 1u) % UART_TX_BUFFER_SIZE;
+
+    if (next == uart_tx_tail)
+    {
+        return 0;
+    }
+
+    uart_tx_buffer[uart_tx_head] = c;
+    uart_tx_head = next;
+    return 1;
+}
+
+/*
+ * Pop one byte from the TX software buffer.
+ *
+ * Returns 1 on success, 0 if the buffer is empty.
+ * Caller must either run in IRQ context or hold interrupts disabled.
+ */
+static int uart_tx_pop(char *c)
+{
+    if (uart_tx_head == uart_tx_tail)
+    {
+        return 0;
+    }
+
+    *c = uart_tx_buffer[uart_tx_tail];
+    uart_tx_tail = (uart_tx_tail + 1u) % UART_TX_BUFFER_SIZE;
+    return 1;
+}
+
+/*
+ * Drain pending TX bytes into the hardware FIFO.
+ *
+ * Called from the UART IRQ handler and also from task context with interrupts
+ * disabled after new data has been queued.
+ *
+ * If at least one byte is removed from the software TX buffer, a blocked
+ * writer can be woken because space is available again.
+ */
+static void uart_tx_drain(void)
+{
+    char c;
+    int made_space = 0;
+
+    while (uart_can_write())
+    {
+        if (!uart_tx_pop(&c))
+        {
+            uart_disable_tx_irq();
+            uart_tx_wake_writer();
+            return;
+        }
+
+        mmio_write(AUX_MU_IO_REG, (uint32_t)c);
+        made_space = 1;
+    }
+
+    if (made_space)
+    {
+        uart_tx_wake_writer();
+    }
+
+    if (uart_tx_buffer_empty())
+    {
+        uart_disable_tx_irq();
+    }
+}
+
+/*
+ * Scheduler-aware byte output.
+ *
+ * In normal task context, the byte is queued into the TX software buffer and
+ * sent by the UART TX interrupt. If the software buffer is full, the current
+ * task is marked BLOCKED and resumed once the IRQ handler has freed space.
+ */
+static void uart_write_byte(char c)
+{
+    int id;
+    task_t *task;
+
+    // before the scheduler is active, keep direct boot output working
+    if (scheduler_current_task_id() < 0)
+    {
+        while (!uart_can_write())
+        {
+        }
+
+        mmio_write(AUX_MU_IO_REG, (uint32_t)c);
+        return;
+    }
+
+    while (1)
+    {
+        irq_disable();
+
+        if (uart_tx_push(c))
+        {
+            uart_enable_tx_irq();
+
+            // if the UART is already ready, push bytes immediately into
+            // the hardware FIFO; remaining bytes continue via TX IRQ
+            uart_tx_drain();
+
+            irq_enable();
+            return;
+        }
+
+        id = scheduler_current_task_id();
+
+        if (id < 0)
+        {
+            irq_enable();
+            while (!uart_can_write())
+            {
+            }
+
+            mmio_write(AUX_MU_IO_REG, (uint32_t)c);
+            return;
+        }
+
+        task = task_get(id);
+
+        if (!task)
+        {
+            irq_enable();
+            return;
+        }
+
+        uart_tx_wait_task_id = id;
+
+        uart_enable_tx_irq();
+        uart_tx_drain();
+
+        if (!uart_tx_buffer_full())
+        {
+            if (uart_tx_wait_task_id == id)
+            {
+                uart_tx_wait_task_id = -1;
+            }
+
+            irq_enable();
+            continue;
+        }
+
+        task->state = BLOCKED;
+
+        irq_enable();
+
+        scheduler_yield();
+    }
 }
 
 /*
@@ -179,8 +376,8 @@ void uart_init(void)
     gpio_use_as_alt5(14); // TX
     gpio_use_as_alt5(15); // RX
 
-    mmio_write(AUX_MU_CNTL_REG, 3); // enable transmitter and receiver
-    mmio_write(AUX_MU_IER_REG, 1);  // enable RX interrupt (bit 0)
+    mmio_write(AUX_MU_CNTL_REG, 3);                   // enable transmitter and receiver
+    mmio_write(AUX_MU_IER_REG, AUX_MU_IER_RX_ENABLE); // enable RX interrupt (bit 0)
 }
 
 /*
@@ -195,13 +392,115 @@ void uart_init_tx_lock(void)
 }
 
 /*
+ * Register the task that should be woken when UART RX data arrives.
+ */
+void uart_set_rx_task(int task_id)
+{
+    uart_rx_task_id = task_id;
+}
+
+int uart_get_rx_task(void)
+{
+    return uart_rx_task_id;
+}
+
+void uart_flush_rx(void)
+{
+    irq_disable();
+    uart_rx_head = 0;
+    uart_rx_tail = 0;
+    irq_enable();
+}
+
+/*
+ * Read one character from the UART software RX buffer.
+ *
+ * If no character is currently available, the calling task is blocked
+ * atomically with interrupts disabled to avoid lost wakeups. The task
+ * is resumed by the UART interrupt handler once new RX data arrives.
+ *
+ * Returns 1 after a character has been stored in *c.
+ */
+int uart_read_char(char *c)
+{
+    int id;
+    task_t *task;
+
+    if (!c)
+    {
+        return 0;
+    }
+
+    while (1)
+    {
+        irq_disable();
+
+        // fast path: consume one byte if the RX ring buffer is not empty
+        if (uart_rx_head != uart_rx_tail)
+        {
+            *c = uart_rx_buffer[uart_rx_tail];
+            uart_rx_tail = (uart_rx_tail + 1u) % UART_RX_BUFFER_SIZE;
+
+            irq_enable();
+            return 1;
+        }
+
+        // no input is available; the current task must block until the
+        // UART RX interrupt handler receives data and wakes it again
+        id = scheduler_current_task_id();
+        if (id < 0)
+        {
+            irq_enable();
+            return 0;
+        }
+
+        task = task_get(id);
+        if (!task)
+        {
+            irq_enable();
+            return 0;
+        }
+
+        task->state = BLOCKED;
+        irq_enable();
+
+        scheduler_yield();
+    }
+}
+
+int uart_try_read_char(char *c)
+{
+    int result = 0;
+
+    if (!c)
+    {
+        return 0;
+    }
+
+    irq_disable();
+
+    if (uart_rx_head != uart_rx_tail)
+    {
+        *c = uart_rx_buffer[uart_rx_tail];
+        uart_rx_tail = (uart_rx_tail + 1u) % UART_RX_BUFFER_SIZE;
+        result = 1;
+    }
+
+    irq_enable();
+
+    return result;
+}
+
+/*
  * Send a single character via UART.
- * Blocks until the transmit register is ready.
+ *
+ * In task context this queues the byte and lets the TX IRQ send it.
+ * Before the scheduler is running this falls back to raw polling output.
  */
 void uart_putc(char c)
 {
     int locked = uart_lock_tx();
-    uart_write_console_byte(c);
+    uart_write_byte(c);
     uart_unlock_tx(locked);
 }
 
@@ -227,76 +526,10 @@ void uart_puts(const char *s)
             uart_write_byte('\r');
         }
 
-        uart_write_console_byte(*s++);
+        uart_write_byte(*s++);
     }
 
     uart_unlock_tx(locked);
-}
-
-/*
- * Read one character from the software RX buffer.
- * Returns 1 on success, 0 if no character is available.
- */
-int uart_read_char(char *c)
-{
-    if (uart_head == uart_tail)
-    {
-        return 0;
-    }
-
-    *c = uart_buffer[uart_tail];
-    uart_tail = (uart_tail + 1) % UART_BUFFER_SIZE;
-    return 1;
-}
-
-/*
- * Read one character from the UART software RX buffer.
- *
- * If no character is currently available, the calling task is blocked
- * atomically with interrupts disabled to avoid lost wakeups. The task
- * is resumed by the UART interrupt handler once new RX data arrives.
- *
- * Returns 1 after a character has been stored in *c.
- */
-int uart_read_char_blocking(char *c)
-{
-    int id;
-    task_t *task;
-
-    if (!c)
-    {
-        return 0;
-    }
-
-    while (1)
-    {
-        irq_disable();
-
-        if (uart_read_char(c))
-        {
-            irq_enable();
-            return 1;
-        }
-
-        id = scheduler_current_task_id();
-        if (id < 0)
-        {
-            irq_enable();
-            return 0;
-        }
-
-        task = task_get(id);
-        if (!task)
-        {
-            irq_enable();
-            return 0;
-        }
-
-        task->state = BLOCKED;
-        irq_enable();
-
-        scheduler_yield();
-    }
 }
 
 /*
@@ -310,20 +543,20 @@ void uart_put_uint(unsigned int value)
 
     if (value == 0)
     {
-        uart_write_console_byte('0');
+        uart_write_byte('0');
         uart_unlock_tx(locked);
         return;
     }
 
     while (value > 0)
     {
-        buffer[i++] = (char)('0' + (value % 10));
-        value /= 10;
+        buffer[i++] = (char)('0' + (value % 10u));
+        value /= 10u;
     }
 
     while (i > 0)
     {
-        uart_write_console_byte(buffer[--i]);
+        uart_write_byte(buffer[--i]);
     }
 
     uart_unlock_tx(locked);
@@ -343,7 +576,7 @@ void uart_put_u64(uint64_t value)
 
     for (int i = 0; buffer[i] != '\0'; i++)
     {
-        uart_write_console_byte(buffer[i]);
+        uart_write_byte(buffer[i]);
     }
 
     uart_unlock_tx(locked);
@@ -361,12 +594,12 @@ void uart_put_hex_uintptr(uintptr_t value)
 
     locked = uart_lock_tx();
 
-    uart_write_console_byte('0');
-    uart_write_console_byte('x');
+    uart_write_byte('0');
+    uart_write_byte('x');
 
     for (int i = 0; buffer[i] != '\0'; i++)
     {
-        uart_write_console_byte(buffer[i]);
+        uart_write_byte(buffer[i]);
     }
 
     uart_unlock_tx(locked);
@@ -377,10 +610,10 @@ void uart_put_hex8(uint8_t value)
     const char *hex = "0123456789ABCDEF";
     int locked = uart_lock_tx();
 
-    uart_write_console_byte('0');
-    uart_write_console_byte('x');
-    uart_write_console_byte(hex[(value >> 4) & 0xF]);
-    uart_write_console_byte(hex[value & 0xF]);
+    uart_write_byte('0');
+    uart_write_byte('x');
+    uart_write_byte(hex[(value >> 4) & 0xF]);
+    uart_write_byte(hex[value & 0xF]);
 
     uart_unlock_tx(locked);
 }
@@ -388,42 +621,42 @@ void uart_put_hex8(uint8_t value)
 /*
  * UART interrupt handler.
  *
- * Drains all currently available received characters from the hardware
- * FIFO and stores them in the software ring buffer.
+ * RX side:
+ *   Drains available received characters into the RX software buffer and wakes
+ *   the registered RX task.
  *
- * If the buffer is full, incoming characters are dropped.
+ * TX side:
+ *   Drains queued TX characters into the hardware FIFO while space is available.
+ *   Disables TX interrupts when no TX data remains.
  */
 void uart_handle_irq(void)
 {
     int received = 0;
 
-    // AUX bit 0 indicates a Mini UART interrupt is pending.
-    // While it is pendig, drain all available RX bytes.
-    while (mmio_read(AUX_IRQ) & 0x1)
+    // RX: drain all currently available received bytes
+    while (uart_data_ready())
     {
-        while (uart_data_ready())
-        {
-            char c = (char)mmio_read(AUX_MU_IO_REG);
-            unsigned int next = (uart_head + 1) % UART_BUFFER_SIZE;
+        char c = (char)mmio_read(AUX_MU_IO_REG);
+        unsigned int next = (uart_rx_head + 1) % UART_RX_BUFFER_SIZE;
 
-            if (next != uart_tail)
-            {
-                uart_buffer[uart_head] = c;
-                uart_head = next;
-                received = 1;
-            }
-        }
-
-        // If AUX still reports a pending UART interrupt but no RX data is
-        // available anymore, leave the handler to avoid a possible loop.
-        if (!uart_data_ready())
+        if (next != uart_rx_tail)
         {
-            break;
+            uart_rx_buffer[uart_rx_head] = c;
+            uart_rx_head = next;
+            received = 1;
         }
     }
 
     if (received && uart_rx_task_id >= 0)
     {
         task_wakeup(uart_rx_task_id);
+    }
+
+    // TX: only drain if TX interrupts are currently enabled
+    // the interrupt is enabled when data is queued and disabled once
+    // the software TX buffer becomes empty
+    if (mmio_read(AUX_MU_IER_REG) & AUX_MU_IER_TX_ENABLE)
+    {
+        uart_tx_drain();
     }
 }

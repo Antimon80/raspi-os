@@ -1178,7 +1178,6 @@ void tictactoe_task(void)
 {
     ttt_game_t game;
     int previous_rx_task = uart_get_rx_task();
-    int previous_hdmi_mirror = uart_get_hdmi_mirror();
     int shell_id         = shell_find_task_by_name("shell");
     int running          = 1;
     int uart_dirty       = 1;
@@ -1209,7 +1208,6 @@ void tictactoe_task(void)
     }
 
     uart_flush_rx();
-    uart_set_hdmi_mirror(0);
     joystick_set_event_handler(ttt_joystick_event_handler);
     uart_set_rx_task(shell_find_task_by_name("tictactoe"));
 
@@ -1275,7 +1273,7 @@ void tictactoe_task(void)
             hdmi_dirty = 0;
         }
 
-        if (!uart_read_char(&c))
+        if (!uart_try_read_char(&c))
         {
             joy = ttt_joystick_read_event();
             if (joy != JOY_EVENT_NONE)
@@ -1309,7 +1307,6 @@ void tictactoe_task(void)
     }
     ttt_led_enabled = 0;
     ttt_task_id = -1;
-    uart_set_hdmi_mirror(previous_hdmi_mirror);
     if (shell_id >= 0) uart_set_rx_task(shell_id);
     else               uart_set_rx_task(previous_rx_task);
 
