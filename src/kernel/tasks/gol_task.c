@@ -342,6 +342,7 @@ static led_matrix_color_t gol_color_for_age(uint8_t age)
 static void gol_render(void)
 {
     led_frame_t frame;
+    int task_id = gol_get_task_id();
 
     for (int y = 0; y < HEIGHT; y++)
     {
@@ -351,7 +352,7 @@ static void gol_render(void)
         }
     }
 
-    led_submit_frame(&frame);
+    led_submit_frame(task_id, &frame);
 }
 
 /*
@@ -375,7 +376,18 @@ int gol_get_task_id(void)
  */
 void gol_task(void)
 {
-    uart_puts("gol: started:\n");
+    int task_id = scheduler_current_task_id();
+
+    gol_register_task_id(task_id);
+
+    uart_puts("gol: started\n");
+
+    if (led_acquire(task_id) < 0)
+    {
+        uart_puts("gol: LED matrix already in use\n");
+        gol_register_task_id(-1);
+        return;
+    }
 
     rng_state ^= (uint32_t)timer_get_ticks();
 
@@ -400,4 +412,7 @@ void gol_task(void)
 
         gol_render();
     }
+
+    led_release(task_id);
+    gol_register_task_id(-1);
 }

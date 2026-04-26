@@ -21,27 +21,19 @@
 void main(void)
 {
     uart_init();
-    // hdmi_init();
-    // hdmi_show_bootscreen();
-    // hdmi_clear_console();
-
-    uart_puts("Boot OK\n");
-    uart_puts("UART OK\n");
 
     heap_init();
-    uart_puts("Heap OK\n");
-
     log_init();
-    uart_puts("Log OK\n");
 
     i2c_init();
-    uart_puts("I2C OK\n");
-
     i2c_bus_init();
-    uart_puts("I2C bus lock OK\n");
 
     task_init_system();
     scheduler_init();
+
+    uart_init_tx_lock();
+
+    uart_puts("Kernel initialized\n");
 
     int shell_id = task_create_system(shell_task, "shell");
     if (shell_id < 0)

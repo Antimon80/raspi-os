@@ -22,72 +22,17 @@ typedef struct
 } joy_menu_state_t;
 
 /*
- * One menu entry consists of the visible label and the action that
+ * One menu entry consists of the visible label and the command that
  * is executed when the entry is selected.
  */
 typedef struct
 {
     const char *label;
-    void (*action)(void);
+    const char *command;
 } joy_menu_entry_t;
 
 /* Global menu state (single instance) */
 static joy_menu_state_t menu_state;
-
-/*
- * Menu action wrappers.
- *
- * The joystick menu cannot accept free-text input, so task-specific
- * actions are exposed as explicit menu entries.
- */
-static void joy_menu_cmd_help(void)
-{
-    shell_cmd_help();
-}
-
-static void joy_menu_cmd_ps(void)
-{
-    shell_cmd_ps();
-}
-
-static void joy_menu_cmd_start_heartbeat(void)
-{
-    shell_cmd_start_arg("heart");
-}
-
-static void joy_menu_cmd_stop_heartbeat(void)
-{
-    shell_cmd_stop_arg("heart");
-}
-
-static void joy_menu_cmd_start_fast(void)
-{
-    shell_cmd_start_arg("fast");
-}
-
-static void joy_menu_cmd_stop_fast(void)
-{
-    shell_cmd_stop_arg("fast");
-}
-
-static void joy_menu_cmd_start_slow(void)
-{
-    shell_cmd_start_arg("slow");
-}
-
-static void joy_menu_cmd_stop_slow(void)
-{
-    shell_cmd_stop_arg("slow");
-}
-static void joy_menu_cmd_start_gol(void)
-{
-    shell_cmd_start_arg("gol");
-}
-
-static void joy_menu_cmd_stop_gol(void)
-{
-    shell_cmd_stop_arg("gol");
-}
 
 /*
  * Static list of menu entries.
@@ -97,20 +42,40 @@ static void joy_menu_cmd_stop_gol(void)
  */
 static const joy_menu_entry_t menu_entries[] =
     {
-        {"help", joy_menu_cmd_help},
-        {"ps", joy_menu_cmd_ps},
-        {"start heart", joy_menu_cmd_start_heartbeat},
-        {"stop heart", joy_menu_cmd_stop_heartbeat},
-        {"start fast", joy_menu_cmd_start_fast},
-        {"stop fast", joy_menu_cmd_stop_fast},
-        {"start slow", joy_menu_cmd_start_slow},
-        {"stop slow", joy_menu_cmd_stop_slow},
-        {"start gol", joy_menu_cmd_start_gol},
-        {"stop gol", joy_menu_cmd_stop_gol},
-        {"trace dump", shell_cmd_trace_dump},
+        {"help", "help"},
+        {"ps", "ps"},
+        {"start heart", "start heart"},
+        {"stop heart", "stop heart"},
+        {"start fast", "start fast"},
+        {"stop fast", "stop fast"},
+        {"start slow", "start slow"},
+        {"stop slow", "stop slow"},
+        {"start gol", "start gol"},
+        {"stop gol", "stop gol"},
+        {"trace dump", "trace dump"},
 };
 
 #define JOY_MENU_ITEMS ((int)(sizeof(menu_entries) / sizeof(menu_entries[0])))
+
+/*
+ * Execute the currently selected menu entry.
+ */
+static void joy_menu_execute_selected(void)
+{
+    const joy_menu_entry_t *entry;
+
+    if (menu_state.selected < 0 || menu_state.selected >= JOY_MENU_ITEMS)
+    {
+        return;
+    }
+
+    entry = &menu_entries[menu_state.selected];
+
+    if (entry->command)
+    {
+        shell_execute_command(entry->command);
+    }
+}
 
 /*
  * Render the joystick menu to the UART console.
@@ -134,22 +99,6 @@ static void joy_menu_render(void)
 
         uart_puts(menu_entries[i].label);
         uart_puts("\n");
-    }
-}
-
-/*
- * Execute the currently selected menu entry.
- */
-static void joy_menu_execute_selected(void)
-{
-    if (menu_state.selected < 0 || menu_state.selected >= JOY_MENU_ITEMS)
-    {
-        return;
-    }
-
-    if (menu_entries[menu_state.selected].action)
-    {
-        menu_entries[menu_state.selected].action();
     }
 }
 

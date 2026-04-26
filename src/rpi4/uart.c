@@ -6,6 +6,7 @@
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
 #include "kernel/irq.h"
+#include "kernel/sync/mutex.h"
 
 /* Base address of peripheral MMIO region (Raspberry Pi 4 BCM2711) */
 #define PERIPHERAL_BASE ((uintptr_t)0xFE000000)
@@ -42,35 +43,50 @@ static volatile unsigned int uart_head = 0;
 static volatile unsigned int uart_tail = 0;
 static int uart_rx_task_id = -1;
 
+static mutex_t uart_tx_mutex;
+static int uart_tx_lock_ready = 0;
+
 static uint32_t uart_can_write(void);
 static unsigned int uart_data_ready(void);
+static void uart_write_byte(char c);
+
+static int uart_lock_tx(void)
+{
+    if (!uart_tx_lock_ready)
+    {
+        return 0;
+    }
+
+    if (scheduler_current_task_id() < 0)
+    {
+        return 0;
+    }
+
+    mutex_lock(&uart_tx_mutex);
+    return 1;
+}
+
+static void uart_unlock_tx(int locked)
+{
+    if (locked)
+    {
+        mutex_unlock(&uart_tx_mutex);
+    }
+}
 
 /*
- * Send a single character only to the Mini UART, without mirroring it to HDMI.
+ * Internal byte output.
+ *
+ * This function is intentionally not exported and does not lock.
+ * Public uart_put* functions are responsible for synchronization.
  */
-void uart_putc_raw(char c)
+static void uart_write_byte(char c)
 {
     while (!uart_can_write())
     {
     }
 
     mmio_write(AUX_MU_IO_REG, (uint32_t)c);
-}
-
-/*
- * Send a string only to the Mini UART.
- * Converts '\n' to CRLF for terminal compatibility.
- */
-void uart_puts_raw(const char *s)
-{
-    while (*s)
-    {
-        if (*s == '\n')
-        {
-            uart_putc_raw('\r');
-        }
-        uart_putc_raw(*s++);
-    }
 }
 
 /*
@@ -141,13 +157,25 @@ void uart_init(void)
 }
 
 /*
+ * Enable serialized TX output.
+ *
+ * Call this after task_init_system() and scheduler_init().
+ */
+void uart_init_tx_lock(void)
+{
+    mutex_init(&uart_tx_mutex);
+    uart_tx_lock_ready = 1;
+}
+
+/*
  * Send a single character via UART.
  * Blocks until the transmit register is ready.
  */
 void uart_putc(char c)
 {
-    uart_putc_raw(c);
-    //hdmi_putc(c);
+    int locked = uart_lock_tx();
+    uart_write_byte(c);
+    uart_unlock_tx(locked);
 }
 
 /*
@@ -156,14 +184,26 @@ void uart_putc(char c)
  */
 void uart_puts(const char *s)
 {
+    int locked;
+
+    if (!s)
+    {
+        return;
+    }
+
+    locked = uart_lock_tx();
+
     while (*s)
     {
         if (*s == '\n')
         {
-            uart_putc('\r');
+            uart_write_byte('\r');
         }
-        uart_putc(*s++);
+
+        uart_write_byte(*s++);
     }
+
+    uart_unlock_tx(locked);
 }
 
 /*
@@ -239,10 +279,12 @@ void uart_put_uint(unsigned int value)
 {
     char buffer[16];
     int i = 0;
+    int locked = uart_lock_tx();
 
     if (value == 0)
     {
-        uart_putc('0');
+        uart_write_byte('0');
+        uart_unlock_tx(locked);
         return;
     }
 
@@ -254,8 +296,10 @@ void uart_put_uint(unsigned int value)
 
     while (i > 0)
     {
-        uart_putc(buffer[--i]);
+        uart_write_byte(buffer[--i]);
     }
+
+    uart_unlock_tx(locked);
 }
 
 /*
@@ -264,8 +308,18 @@ void uart_put_uint(unsigned int value)
 void uart_put_u64(uint64_t value)
 {
     char buffer[32];
+    int locked;
+
     utoa_dec(value, buffer, sizeof(buffer));
-    uart_puts(buffer);
+
+    locked = uart_lock_tx();
+
+    for (int i = 0; buffer[i] != '\0'; i++)
+    {
+        uart_write_byte(buffer[i]);
+    }
+
+    uart_unlock_tx(locked);
 }
 
 /*
@@ -274,17 +328,34 @@ void uart_put_u64(uint64_t value)
 void uart_put_hex_uintptr(uintptr_t value)
 {
     char buffer[32];
-    uart_puts("0x");
+    int locked;
+
     utoa_hex((uint64_t)value, buffer, sizeof(buffer));
-    uart_puts(buffer);
+
+    locked = uart_lock_tx();
+
+    uart_write_byte('0');
+    uart_write_byte('x');
+
+    for (int i = 0; buffer[i] != '\0'; i++)
+    {
+        uart_write_byte(buffer[i]);
+    }
+
+    uart_unlock_tx(locked);
 }
 
 void uart_put_hex8(uint8_t value)
 {
     const char *hex = "0123456789ABCDEF";
-    uart_puts("0x");
-    uart_putc(hex[(value >> 4) & 0xF]);
-    uart_putc(hex[value & 0xF]);
+    int locked = uart_lock_tx();
+
+    uart_write_byte('0');
+    uart_write_byte('x');
+    uart_write_byte(hex[(value >> 4) & 0xF]);
+    uart_write_byte(hex[value & 0xF]);
+
+    uart_unlock_tx(locked);
 }
 
 /*

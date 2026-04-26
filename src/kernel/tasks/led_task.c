@@ -6,6 +6,7 @@
 #include "rpi4/uart.h"
 
 static int led_task_id = -1;
+static int led_owner_task_id = -1;
 
 /*
  * Single-slot frame buffer used for producer → consumer handoff.
@@ -46,7 +47,7 @@ int led_get_task_id(void)
  * Returns 0 on success and -1 on invalid input or if the LED task
  * is not yet registered.
  */
-int led_submit_frame(const led_frame_t *frame)
+int led_submit_frame(int task_id, const led_frame_t *frame)
 {
     if (!frame || led_task_id < 0)
     {
@@ -54,6 +55,12 @@ int led_submit_frame(const led_frame_t *frame)
     }
 
     irq_disable();
+
+    if (led_owner_task_id != task_id)
+    {
+        irq_enable();
+        return -1;
+    }
 
     pending_frame = *frame;
     frame_pending = 1;
@@ -73,7 +80,7 @@ int led_submit_frame(const led_frame_t *frame)
  *
  * Returns 0 on success and -1 on failure.
  */
-int led_submit_clear_frame(void)
+int led_submit_clear_frame(int task_id)
 {
     led_frame_t frame;
     led_matrix_color_t black = {0, 0, 0};
@@ -86,7 +93,7 @@ int led_submit_clear_frame(void)
         }
     }
 
-    return led_submit_frame(&frame);
+    return led_submit_frame(task_id, &frame);
 }
 
 /*
@@ -151,4 +158,55 @@ void led_task(void)
 
         led_matrix_render_frame(&frame);
     }
+}
+
+/*
+ * Try to acquire exclusive ownership of the LED matrix for a producer task.
+ *
+ * Only the current owner is allowed to submit frames. If no owner is set,
+ * the given task becomes the owner. Re-acquiring by the same task is allowed.
+ *
+ * Returns 0 on success and -1 if another task already owns the matrix.
+ */
+int led_acquire(int task_id)
+{
+    int ok = 0;
+
+    irq_disable();
+
+    if (led_owner_task_id < 0 || led_owner_task_id == task_id)
+    {
+        led_owner_task_id = task_id;
+        ok = 1;
+    }
+
+    irq_enable();
+
+    return ok ? 0 : -1;
+}
+
+/*
+ * Release LED matrix ownership for a producer task.
+ *
+ * Before ownership is released, the display is cleared through the normal
+ * frame submission path. If the given task is not the current owner, the
+ * function leaves the owner unchanged.
+ */
+void led_release(int task_id)
+{
+    if (task_id < 0)
+    {
+        return;
+    }
+
+    led_submit_clear_frame(task_id);
+
+    irq_disable();
+
+    if (led_owner_task_id == task_id)
+    {
+        led_owner_task_id = -1;
+    }
+
+    irq_enable();
 }

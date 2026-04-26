@@ -63,7 +63,7 @@ static const int ttt_lines[8][3] = {
     {0, 4, 8}, {2, 4, 6}
 };
 
-static void u(const char *s)  { uart_puts_raw(s); }
+static void u(const char *s)  { uart_puts(s); }
 static void h(const char *s)  { hdmi_puts(s); }
 
 /*

@@ -2,7 +2,7 @@
 #define KERNEL_SHELL_SHELL_H
 
 void shell_task(void);
-
+void shell_execute_command(const char *cmd);
 void shell_cmd_help(void);
 void shell_cmd_ps(void);
 void shell_cmd_trace_dump(void);

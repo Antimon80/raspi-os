@@ -291,7 +291,7 @@ void shell_cmd_stop_id(int id)
 
     if (id == gol_get_task_id())
     {
-        led_submit_clear_frame();
+        led_release(id);
         gol_register_task_id(-1);
     }
 
@@ -413,7 +413,7 @@ static void shell_cmd_trace_clear(void)
 /*
  * Execute one shell command line.
  */
-static void shell_execute_command(char *cmd)
+void shell_execute_command(const char *cmd)
 {
     if (str_equals(cmd, "help"))
     {
