@@ -1,0 +1,81 @@
+#include "sensehat/lps25h.h"
+#include "rpi4/i2c.h"
+
+#define LPS25H_ADDR 0x5c
+#define LPS25H_WHO_AM_I 0x0f
+#define LPS25H_CTRL_REG1 0x20
+#define LPS25H_PRESS_OUT_XL 0x28
+#define LPS25H_WHO_VALUE 0xbd
+#define LPS25H_AUTO_INC 0x80
+
+int lps25h_init(void)
+{
+    uint8_t who = 0;
+    if (i2c_read_reg8(LPS25H_ADDR, LPS25H_WHO_AM_I, &who) < 0)
+    {
+        return -1;
+    }
+
+    if (who != LPS25H_WHO_VALUE)
+    {
+        return -1;
+    }
+
+    if (i2c_write_reg8(LPS25H_ADDR, LPS25H_CTRL_REG1, 0x90) < 0)
+    {
+        return -1;
+    }
+
+    return 0;
+}
+
+int lps25h_read_pressure_raw(int32_t *pressure_raw)
+{
+    uint8_t reg = LPS25H_PRESS_OUT_XL | LPS25H_AUTO_INC;
+    uint8_t data[3];
+    int32_t raw;
+
+    if (!pressure_raw)
+    {
+        return -1;
+    }
+
+    if (i2c_write_read(LPS25H_ADDR, &reg, 1, data, 3) < 0)
+    {
+        return -1;
+    }
+
+    raw = ((int32_t)data[2] << 16) | ((int32_t)data[1] << 8) | ((int32_t)data[0]);
+
+    if (raw & 0x00800000)
+    {
+        raw |= 0xff00000;
+    }
+
+    *pressure_raw = raw;
+    return 0;
+}
+
+int lps25h_read_pressure_centi_hpa(int32_t *pressure_centi_hpa, int32_t *pressure_raw)
+{
+    int32_t raw;
+
+    if (!pressure_centi_hpa)
+    {
+        return -1;
+    }
+
+    if (lps25h_read_pressure_raw(&raw) < 0)
+    {
+        return -1;
+    }
+
+    *pressure_centi_hpa = (raw * 100) / 4096;
+
+    if (pressure_raw)
+    {
+        *pressure_raw = raw;
+    }
+
+    return 0;
+}
