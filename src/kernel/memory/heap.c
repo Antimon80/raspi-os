@@ -1,5 +1,6 @@
 #include "kernel/memory/heap.h"
 #include "kernel/debug/panic.h"
+#include "kernel/io/console.h"
 #include "rpi4/uart.h"
 
 #define HEAP_SIZE (4 * 1024 * 1024)
@@ -311,16 +312,16 @@ void heap_dump(void)
 
     if (!heap_initialized)
     {
-        uart_puts("heap: not initialized\n");
+        console_puts("heap: not initialized\n");
         return;
     }
 
-    uart_puts("=== HEAP DUMP ===\n");
-    uart_puts("heap_start=");
-    uart_put_hex_uintptr((uintptr_t)heap_start);
-    uart_puts(" heap_end=");
-    uart_put_hex_uintptr((uintptr_t)heap_end);
-    uart_puts("\n");
+    console_puts("=== HEAP DUMP ===\n");
+    console_puts("heap_start=");
+    console_put_hex_uintptr((uintptr_t)heap_start);
+    console_puts(" heap_end=");
+    console_put_hex_uintptr((uintptr_t)heap_end);
+    console_puts("\n");
 
     current = heap_head;
 
@@ -328,21 +329,21 @@ void heap_dump(void)
     {
         check_block_or_panic(current, "heap: corrupted block in dump");
 
-        uart_puts("block ");
-        uart_put_u64((uint64_t)index);
-        uart_puts(": addr=");
-        uart_put_hex_uintptr((uintptr_t)current);
-        uart_puts(" size=");
-        uart_put_u64((uint64_t)current->size);
-        uart_puts(" free=");
-        uart_put_u64((uint64_t)current->free);
-        uart_puts("\n");
+        console_puts("block ");
+        console_put_u64((uint64_t)index);
+        console_puts(": addr=");
+        console_put_hex_uintptr((uintptr_t)current);
+        console_puts(" size=");
+        console_put_u64((uint64_t)current->size);
+        console_puts(" free=");
+        console_put_u64((uint64_t)current->free);
+        console_puts("\n");
 
         current = current->next;
         index++;
     }
 
-    uart_puts("=================\n");
+    console_puts("=================\n");
 }
 
 void heap_stats(void)
@@ -368,11 +369,11 @@ void heap_stats(void)
         current = current->next;
     }
 
-    uart_puts("heap used=");
-    uart_put_u64(used_bytes);
-    uart_puts(" free=");
-    uart_put_u64(free_bytes);
-    uart_puts(" blocks=");
-    uart_put_u64(blocks);
-    uart_puts("\n");
+    console_puts("heap used=");
+    console_put_u64(used_bytes);
+    console_puts(" free=");
+    console_put_u64(free_bytes);
+    console_puts(" blocks=");
+    console_put_u64(blocks);
+    console_puts("\n");
 }

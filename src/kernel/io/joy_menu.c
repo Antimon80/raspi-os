@@ -1,5 +1,6 @@
 #include "kernel/io/joy_menu.h"
 #include "kernel/io/shell.h"
+#include "kernel/io/console.h"
 #include "kernel/timer.h"
 #include "rpi4/uart.h"
 
@@ -21,16 +22,6 @@ typedef struct
     uint64_t center_press_tick;
 } joy_menu_state_t;
 
-/*
- * One menu entry consists of the visible label and the command that
- * is executed when the entry is selected.
- */
-typedef struct
-{
-    const char *label;
-    const char *command;
-} joy_menu_entry_t;
-
 /* Global menu state (single instance) */
 static joy_menu_state_t menu_state;
 
@@ -40,21 +31,21 @@ static joy_menu_state_t menu_state;
  * Each entry contains both the visible label and the function that
  * should be executed when selected.
  */
-static const joy_menu_entry_t menu_entries[] =
+static const char *menu_entries[] =
     {
-        {"help", "help"},
-        {"ps", "ps"},
-        {"start tictactoe", "start tictactoe"},
-        {"stop tictactoe", "stop tictactoe"},
-        {"start heart", "start heart"},
-        {"stop heart", "stop heart"},
-        {"start fast", "start fast"},
-        {"stop fast", "stop fast"},
-        {"start slow", "start slow"},
-        {"stop slow", "stop slow"},
-        {"start gol", "start gol"},
-        {"stop gol", "stop gol"},
-        {"trace dump", "trace dump"},
+        "help",
+        "ps",
+        "start tictactoe",
+        "stop tictactoe",
+        "start heart",
+        "stop heart",
+        "start fast",
+        "stop fast",
+        "start slow",
+        "stop slow",
+        "start gol",
+        "stop gol",
+        "trace dump",
 };
 
 #define JOY_MENU_ITEMS ((int)(sizeof(menu_entries) / sizeof(menu_entries[0])))
@@ -64,19 +55,12 @@ static const joy_menu_entry_t menu_entries[] =
  */
 static void joy_menu_execute_selected(void)
 {
-    const joy_menu_entry_t *entry;
-
     if (menu_state.selected < 0 || menu_state.selected >= JOY_MENU_ITEMS)
     {
         return;
     }
 
-    entry = &menu_entries[menu_state.selected];
-
-    if (entry->command)
-    {
-        shell_execute_command(entry->command);
-    }
+    shell_execute_command(menu_entries[menu_state.selected]);
 }
 
 /*
@@ -86,21 +70,21 @@ static void joy_menu_execute_selected(void)
  */
 static void joy_menu_render(void)
 {
-    uart_puts("\n[Joystick Menu]\n");
+    console_puts("\n[Joystick Menu]\n");
 
     for (int i = 0; i < JOY_MENU_ITEMS; i++)
     {
         if (i == menu_state.selected)
         {
-            uart_puts("> ");
+            console_puts("> ");
         }
         else
         {
-            uart_puts("  ");
+            console_puts("  ");
         }
 
-        uart_puts(menu_entries[i].label);
-        uart_puts("\n");
+        console_puts(menu_entries[i]);
+        console_puts("\n");
     }
 }
 
@@ -165,12 +149,12 @@ void joy_menu_handle_event(joy_event_t event)
 
             if (menu_state.active)
             {
-                uart_puts("\nmenu opened\n");
+                console_puts("\nmenu opened\n");
                 joy_menu_render();
             }
             else
             {
-                uart_puts("\nmenu closed\n");
+                console_puts("\nmenu closed\n");
             }
         }
         else

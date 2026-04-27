@@ -187,7 +187,7 @@ void shell_cmd_ps(void)
             continue;
         }
 
-        uart_put_uint((unsigned int)task->id);
+        console_put_uint((unsigned int)task->id);
         console_puts("   ");
         shell_print_task_state(task->state);
         console_puts("   ");
@@ -241,7 +241,7 @@ void shell_cmd_start_arg(const char *name)
     if (existing >= 0)
     {
         console_puts("task already exists with id ");
-        uart_put_uint((unsigned int)existing);
+        console_put_uint((unsigned int)existing);
         console_puts("\n");
         return;
     }
@@ -260,7 +260,7 @@ void shell_cmd_start_arg(const char *name)
     }
 
     console_puts("task started with id ");
-    uart_put_uint((unsigned int)id);
+    console_put_uint((unsigned int)id);
     console_puts("\n");
 }
 
@@ -297,7 +297,7 @@ void shell_cmd_stop_id(int id)
     }
 
     console_puts("stop requested for task ");
-    uart_put_uint((unsigned int)id);
+    console_put_uint((unsigned int)id);
     console_puts("\n");
 }
 
@@ -368,36 +368,36 @@ void shell_cmd_trace_dump(void)
         }
 
         console_puts("[t=");
-        uart_put_uint((unsigned int)ev.tick);
+        console_put_uint((unsigned int)ev.tick);
         console_puts("] ");
 
         switch (ev.type)
         {
         case TRACE_CTX_SWITCH:
             console_puts("switch ");
-            uart_put_uint((unsigned int)ev.from_task);
+            console_put_uint((unsigned int)ev.from_task);
             console_puts(" -> ");
-            uart_put_uint((unsigned int)ev.to_task);
+            console_put_uint((unsigned int)ev.to_task);
             break;
         case TRACE_TASK_SLEEP:
             console_puts("sleep ");
-            uart_put_uint((unsigned int)ev.from_task);
+            console_put_uint((unsigned int)ev.from_task);
             console_puts(" ticks=");
-            uart_put_uint((unsigned int)ev.arg);
+            console_put_uint((unsigned int)ev.arg);
             break;
         case TRACE_TASK_WAKE:
             console_puts("wake ");
-            uart_put_uint((unsigned int)ev.from_task);
+            console_put_uint((unsigned int)ev.from_task);
             break;
         case TRACE_TASK_STOP:
             console_puts("stop ");
-            uart_put_uint((unsigned int)ev.from_task);
+            console_put_uint((unsigned int)ev.from_task);
             console_puts(" -> ");
-            uart_put_uint((unsigned int)ev.to_task);
+            console_put_uint((unsigned int)ev.to_task);
             break;
         case TRACE_TASK_EXIT:
             console_puts("exit ");
-            uart_put_uint((unsigned int)ev.from_task);
+            console_put_uint((unsigned int)ev.from_task);
             break;
         default:
             console_puts("unknown");
@@ -519,7 +519,7 @@ void shell_task(void)
             if (len < (SHELL_BUFFER_SIZE - 1))
             {
                 buffer[len++] = c;
-                uart_putc(c);
+                console_putc(c);
             }
         }
     }

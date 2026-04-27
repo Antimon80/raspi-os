@@ -2,6 +2,7 @@
 #include "kernel/memory/heap.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
+#include "kernel/io/console.h"
 #include "rpi4/uart.h"
 #include "util/string.h"
 
@@ -201,13 +202,13 @@ void log_dump_task_id(int task_id)
 
     if (!log)
     {
-        uart_puts("invalid task id\n");
+        console_puts("invalid task id\n");
         return;
     }
 
     if (!log->head)
     {
-        uart_puts("log is empty\n");
+        console_puts("log is empty\n");
         return;
     }
 
@@ -217,25 +218,25 @@ void log_dump_task_id(int task_id)
     {
         if (current->message)
         {
-            uart_puts(current->message);
+            console_puts(current->message);
         }
 
         if (current->value < 0)
         {
-            uart_putc('-');
-            uart_put_uint((unsigned int)(-current->value));
+            console_putc('-');
+            console_put_uint((unsigned int)(-current->value));
         }
         else if (current->value > 0)
         {
-            uart_put_uint((unsigned int)current->value);
+            console_put_uint((unsigned int)current->value);
         }
 
         if (!current->message && current->value == 0)
         {
-            uart_puts("(empty)");
+            console_puts("(empty)");
         }
 
-        uart_puts("\n");
+        console_puts("\n");
         current = current->next;
     }
 }

@@ -1,6 +1,7 @@
 #include "kernel/tasks/gol_task.h"
 #include "kernel/tasks/led_task.h"
 #include "kernel/timer.h"
+#include "kernel/io/console.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
 #include "rpi4/uart.h"
@@ -380,11 +381,11 @@ void gol_task(void)
 
     gol_register_task_id(task_id);
 
-    uart_puts("gol: started\n");
+    console_puts("gol: started\n");
 
     if (led_acquire(task_id) < 0)
     {
-        uart_puts("gol: LED matrix already in use\n");
+        console_puts("gol: LED matrix already in use\n");
         gol_register_task_id(-1);
         return;
     }

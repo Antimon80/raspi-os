@@ -1,6 +1,7 @@
 #include "kernel/tasks/led_task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
+#include "kernel/io/console.h"
 #include "kernel/irq.h"
 #include "sensehat/led_matrix.h"
 #include "rpi4/uart.h"
@@ -120,7 +121,7 @@ void led_task(void)
 
     if (led_matrix_init() < 0)
     {
-        uart_puts("led task: matrix init failed\n");
+        console_puts("led task: matrix init failed\n");
 
         while (1)
         {
@@ -128,7 +129,7 @@ void led_task(void)
         }
     }
 
-    uart_puts("led task: matrix init OK\n");
+    console_puts("led task: matrix init OK\n");
 
     while (1)
     {
