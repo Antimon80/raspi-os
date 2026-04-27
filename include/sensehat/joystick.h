@@ -1,7 +1,7 @@
 #ifndef SENSEHAT_JOYSTICK_H
 #define SENSEHAT_JOYSTICK_H
 
-#include "kernel/shell/joy_menu.h"
+#include "kernel/io/joy_menu.h"
 
 #define JOYSTICK_INT_GPIO 23
 

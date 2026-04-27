@@ -1,7 +1,7 @@
 #include "kernel/tasks/tictactoe_task.h"
 #include "kernel/tasks/joystick_task.h"
 #include "kernel/tasks/led_task.h"
-#include "kernel/shell/shell.h"
+#include "kernel/io/shell.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/irq.h"
 #include "kernel/timer.h"

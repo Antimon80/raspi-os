@@ -1,5 +1,5 @@
-#include "kernel/shell/joy_menu.h"
-#include "kernel/shell/shell.h"
+#include "kernel/io/joy_menu.h"
+#include "kernel/io/shell.h"
 #include "kernel/timer.h"
 #include "rpi4/uart.h"
 

@@ -1,5 +1,5 @@
-#ifndef KERNEL_SHELL_SHELL_H
-#define KERNEL_SHELL_SHELL_H
+#ifndef KERNEL_IO_SHELL_H
+#define KERNEL_IO_SHELL_H
 
 void shell_task(void);
 void shell_execute_command(const char *cmd);

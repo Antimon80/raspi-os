@@ -1,5 +1,5 @@
-#ifndef KERNEL_SHELL_JOY_MENU_H
-#define KERNEL_SHELL_JOY_MENU_H
+#ifndef KERNEL_IO_JOY_MENU_H
+#define KERNEL_IO_JOY_MENU_H
 
 typedef enum
 {

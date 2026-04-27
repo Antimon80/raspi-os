@@ -1,4 +1,4 @@
-#include "kernel/shell/joy_menu.h"
+#include "kernel/io/joy_menu.h"
 #include "kernel/tasks/joystick_task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"

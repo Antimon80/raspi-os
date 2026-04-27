@@ -1,7 +1,7 @@
 #ifndef KERNEL_TASKS_JOYSTICK_TASK_H
 #define KERNEL_TASKS_JOYSTICK_TASK_H
 
-#include "kernel/shell/joy_menu.h"
+#include "kernel/io/joy_menu.h"
 
 typedef void (*joystick_event_handler_t)(joy_event_t event);
 

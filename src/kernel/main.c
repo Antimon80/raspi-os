@@ -8,7 +8,9 @@
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/debug/panic.h"
-#include "kernel/shell/shell.h"
+#include "kernel/io/shell.h"
+#include "kernel/io/console.h"
+#include "kernel/io/hdmi_console.h"
 #include "kernel/timer.h"
 #include "kernel/memory/heap.h"
 #include "kernel/memory/log.h"
@@ -20,6 +22,8 @@
  */
 void main(void)
 {
+    int hdmi_ok = 0;
+
     uart_init();
 
     heap_init();
@@ -30,6 +34,7 @@ void main(void)
 
     if (hdmi_init())
     {
+        hdmi_ok = 1;
         hdmi_show_bootscreen();
         hdmi_clear_console();
     }
@@ -41,6 +46,8 @@ void main(void)
     task_init_system();
     scheduler_init();
 
+    console_init();
+
     int shell_id = task_create_system(shell_task, "shell");
     if (shell_id < 0)
     {
@@ -48,6 +55,20 @@ void main(void)
     }
 
     uart_set_rx_task(shell_id);
+
+    if (hdmi_ok)
+    {
+        int hdmi_console_id = task_create_system(hdmi_console_task, "hdmi_console");
+        if (hdmi_console_id < 0)
+        {
+            uart_puts("Failed to create HDMI console task\n");
+        }
+        else
+        {
+            hdmi_console_register_task_id(hdmi_console_id);
+            hdmi_console_enable(1);
+        }
+    }
 
     int joystick_id = task_create_system(joystick_task, "joystick");
     if (joystick_id < 0)

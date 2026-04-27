@@ -1,4 +1,5 @@
-#include "kernel/shell/shell.h"
+#include "kernel/io/shell.h"
+#include "kernel/io/console.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/memory/heap.h"
@@ -40,25 +41,25 @@ static void shell_print_task_state(task_state_t state)
     switch (state)
     {
     case UNUSED:
-        uart_puts("UNUSED");
+        console_puts("UNUSED");
         break;
     case READY:
-        uart_puts("READY");
+        console_puts("READY");
         break;
     case RUNNING:
-        uart_puts("RUNNING");
+        console_puts("RUNNING");
         break;
     case BLOCKED:
-        uart_puts("BLOCKED");
+        console_puts("BLOCKED");
         break;
     case DYING:
-        uart_puts("DYING");
+        console_puts("DYING");
         break;
     case SLEEPING:
-        uart_puts("SLEEPING");
+        console_puts("SLEEPING");
         break;
     default:
-        uart_puts("UNKNOWN");
+        console_puts("UNKNOWN");
         break;
     }
 }
@@ -151,18 +152,18 @@ int shell_find_task_by_name(const char *name)
  */
 void shell_cmd_help(void)
 {
-    uart_puts("Commands: \n");
-    uart_puts("  help\n");
-    uart_puts("  heap dump\n");
-    uart_puts("  heap stats\n");
-    uart_puts("  log <id|name>\n");
-    uart_puts("  log clear <id|name>\n");
-    uart_puts("  ps\n");
-    uart_puts("  startable\n");
-    uart_puts("  start <name>\n");
-    uart_puts("  stop <id|name>\n");
-    uart_puts("  trace dump\n");
-    uart_puts("  trace clear\n");
+    console_puts("Commands: \n");
+    console_puts("  help\n");
+    console_puts("  heap dump\n");
+    console_puts("  heap stats\n");
+    console_puts("  log <id|name>\n");
+    console_puts("  log clear <id|name>\n");
+    console_puts("  ps\n");
+    console_puts("  startable\n");
+    console_puts("  start <name>\n");
+    console_puts("  stop <id|name>\n");
+    console_puts("  trace dump\n");
+    console_puts("  trace clear\n");
 }
 
 /*
@@ -170,7 +171,7 @@ void shell_cmd_help(void)
  */
 void shell_cmd_ps(void)
 {
-    uart_puts("ID  STATE     NAME\n");
+    console_puts("ID  STATE     NAME\n");
 
     for (int i = 0; i < MAX_TASKS; i++)
     {
@@ -187,11 +188,11 @@ void shell_cmd_ps(void)
         }
 
         uart_put_uint((unsigned int)task->id);
-        uart_puts("   ");
+        console_puts("   ");
         shell_print_task_state(task->state);
-        uart_puts("   ");
-        uart_puts(task->name);
-        uart_puts("\n");
+        console_puts("   ");
+        console_puts(task->name);
+        console_puts("\n");
     }
 }
 
@@ -202,13 +203,13 @@ static void shell_cmd_startable(void)
 {
     int count = (int)(sizeof(startable_tasks) / sizeof(startable_tasks[0]));
 
-    uart_puts("Startable tasks:\n");
+    console_puts("Startable tasks:\n");
 
     for (int i = 0; i < count; i++)
     {
-        uart_puts("  ");
-        uart_puts(startable_tasks[i].name);
-        uart_puts("\n");
+        console_puts("  ");
+        console_puts(startable_tasks[i].name);
+        console_puts("\n");
     }
 }
 
@@ -223,7 +224,7 @@ void shell_cmd_start_arg(const char *name)
 
     if (!name || !*name)
     {
-        uart_puts("missing task name\n");
+        console_puts("missing task name\n");
         return;
     }
 
@@ -231,7 +232,7 @@ void shell_cmd_start_arg(const char *name)
 
     if (!entry)
     {
-        uart_puts("unknown task name\n");
+        console_puts("unknown task name\n");
         return;
     }
 
@@ -239,9 +240,9 @@ void shell_cmd_start_arg(const char *name)
 
     if (existing >= 0)
     {
-        uart_puts("task already exists with id ");
+        console_puts("task already exists with id ");
         uart_put_uint((unsigned int)existing);
-        uart_puts("\n");
+        console_puts("\n");
         return;
     }
 
@@ -249,7 +250,7 @@ void shell_cmd_start_arg(const char *name)
 
     if (id < 0)
     {
-        uart_puts("failed to create task\n");
+        console_puts("failed to create task\n");
         return;
     }
 
@@ -258,9 +259,9 @@ void shell_cmd_start_arg(const char *name)
         gol_register_task_id(id);
     }
 
-    uart_puts("task started with id ");
+    console_puts("task started with id ");
     uart_put_uint((unsigned int)id);
-    uart_puts("\n");
+    console_puts("\n");
 }
 
 /*
@@ -273,19 +274,19 @@ void shell_cmd_stop_id(int id)
 
     if (!task || task->state == UNUSED)
     {
-        uart_puts("task not found\n");
+        console_puts("task not found\n");
         return;
     }
 
     if (task->flag & TASK_FLAG_SYSTEM)
     {
-        uart_puts("refusing to stop system task\n");
+        console_puts("refusing to stop system task\n");
         return;
     }
 
     if (task_request_stop(id) < 0)
     {
-        uart_puts("failed to stop task\n");
+        console_puts("failed to stop task\n");
         return;
     }
 
@@ -295,9 +296,9 @@ void shell_cmd_stop_id(int id)
         gol_register_task_id(-1);
     }
 
-    uart_puts("stop requested for task ");
+    console_puts("stop requested for task ");
     uart_put_uint((unsigned int)id);
-    uart_puts("\n");
+    console_puts("\n");
 }
 
 /*
@@ -309,7 +310,7 @@ void shell_cmd_stop_arg(const char *arg)
 
     if (shell_resolve_task_arg(arg, &id) < 0)
     {
-        uart_puts("task not found\n");
+        console_puts("task not found\n");
         return;
     }
 
@@ -325,7 +326,7 @@ static void shell_cmd_log_arg(const char *arg)
 
     if (shell_resolve_task_arg(arg, &id) < 0)
     {
-        uart_puts("task not found\n");
+        console_puts("task not found\n");
         return;
     }
 
@@ -341,12 +342,12 @@ static void shell_cmd_log_clear_arg(const char *arg)
 
     if (shell_resolve_task_arg(arg, &id) < 0)
     {
-        uart_puts("task not found\n");
+        console_puts("task not found\n");
         return;
     }
 
     log_clear_task_id(id);
-    uart_puts("log cleared\n");
+    console_puts("log cleared\n");
 }
 
 /*
@@ -366,44 +367,44 @@ void shell_cmd_trace_dump(void)
             break;
         }
 
-        uart_puts("[t=");
+        console_puts("[t=");
         uart_put_uint((unsigned int)ev.tick);
-        uart_puts("] ");
+        console_puts("] ");
 
         switch (ev.type)
         {
         case TRACE_CTX_SWITCH:
-            uart_puts("switch ");
+            console_puts("switch ");
             uart_put_uint((unsigned int)ev.from_task);
-            uart_puts(" -> ");
+            console_puts(" -> ");
             uart_put_uint((unsigned int)ev.to_task);
             break;
         case TRACE_TASK_SLEEP:
-            uart_puts("sleep ");
+            console_puts("sleep ");
             uart_put_uint((unsigned int)ev.from_task);
-            uart_puts(" ticks=");
+            console_puts(" ticks=");
             uart_put_uint((unsigned int)ev.arg);
             break;
         case TRACE_TASK_WAKE:
-            uart_puts("wake ");
+            console_puts("wake ");
             uart_put_uint((unsigned int)ev.from_task);
             break;
         case TRACE_TASK_STOP:
-            uart_puts("stop ");
+            console_puts("stop ");
             uart_put_uint((unsigned int)ev.from_task);
-            uart_puts(" -> ");
+            console_puts(" -> ");
             uart_put_uint((unsigned int)ev.to_task);
             break;
         case TRACE_TASK_EXIT:
-            uart_puts("exit ");
+            console_puts("exit ");
             uart_put_uint((unsigned int)ev.from_task);
             break;
         default:
-            uart_puts("unknown");
+            console_puts("unknown");
             break;
         }
 
-        uart_puts("\n");
+        console_puts("\n");
     }
 }
 
@@ -413,7 +414,7 @@ void shell_cmd_trace_dump(void)
 static void shell_cmd_trace_clear(void)
 {
     trace_clear();
-    uart_puts("trace cleared\n");
+    console_puts("trace cleared\n");
 }
 
 /*
@@ -467,9 +468,9 @@ void shell_execute_command(const char *cmd)
     }
     else
     {
-        uart_puts("unknown command: ");
-        uart_puts(cmd);
-        uart_puts("\n");
+        console_puts("unknown command: ");
+        console_puts(cmd);
+        console_puts("\n");
     }
 }
 
@@ -484,7 +485,7 @@ void shell_task(void)
     char buffer[SHELL_BUFFER_SIZE];
     int len = 0;
 
-    uart_puts("> ");
+    console_puts("> ");
 
     while (1)
     {
@@ -494,7 +495,7 @@ void shell_task(void)
 
         if (c == '\r' || c == '\n')
         {
-            uart_puts("\n");
+            console_puts("\n");
             buffer[len] = '\0';
 
             if (len > 0)
@@ -503,14 +504,14 @@ void shell_task(void)
             }
 
             len = 0;
-            uart_puts("> ");
+            console_puts("> ");
         }
         else if (c == '\b' || c == 127)
         {
             if (len > 0)
             {
                 len--;
-                uart_puts("\b \b");
+                console_puts("\b \b");
             }
         }
         else
