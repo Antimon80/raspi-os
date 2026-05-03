@@ -166,6 +166,9 @@ int task_request_stop(int id)
 
     task->state = DYING;
     trace_record(TRACE_TASK_STOP, scheduler_current_task_id(), id, 0);
+
+    irq_enable();
+    
     return 0;
 }
 

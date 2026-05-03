@@ -115,14 +115,14 @@ void task_block_current(void)
 
     if (id < 0)
     {
-        kernel_panic("task_block_current_no_yield: invalid current task\n");
+        kernel_panic("task_block_current: invalid current task\n");
     }
 
     task_t *task = task_get(id);
 
     if (!task)
     {
-        kernel_panic("task_block_current_no_yield: task lookup failed\n");
+        kernel_panic("task_block_current: task lookup failed\n");
     }
 
     irq_disable();
@@ -139,6 +139,13 @@ void task_block_current(void)
  */
 void task_wakeup(int id)
 {
+    irq_disable();
+    task_wakeup_irq_disabled(id);
+    irq_enable();
+}
+
+void task_wakeup_irq_disabled(int id)
+{
     task_t *task = task_get(id);
 
     if (!task)
@@ -146,14 +153,10 @@ void task_wakeup(int id)
         return;
     }
 
-    irq_disable();
-
     if (task->state == BLOCKED)
     {
         task->state = READY;
     }
-
-    irq_enable();
 }
 
 /*

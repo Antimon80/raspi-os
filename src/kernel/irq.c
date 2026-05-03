@@ -138,7 +138,7 @@ static void handle_gpio_irq(void)
     joystick_id = joystick_get_task_id();
     if (joystick_id >= 0)
     {
-        task_wakeup(joystick_id);
+        task_wakeup_irq_disabled(joystick_id);
     }
 }
 

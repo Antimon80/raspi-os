@@ -572,7 +572,7 @@ void uart_handle_irq(void)
 
     if (received && uart_rx_task_id >= 0)
     {
-        task_wakeup(uart_rx_task_id);
+        task_wakeup_irq_disabled(uart_rx_task_id);
     }
 
     // TX: only drain if TX interrupts are currently enabled

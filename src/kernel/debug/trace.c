@@ -48,6 +48,8 @@ int trace_pop(trace_event_t *out)
         return -1;
     }
 
+    irq_disable();
+
     if (trace_head == trace_tail)
     {
         return -1;
@@ -55,6 +57,8 @@ int trace_pop(trace_event_t *out)
 
     *out = trace_buffer[trace_tail];
     trace_tail = (trace_tail + 1U) % TRACE_BUFFER_SIZE;
+
+    irq_enable();
     return 0;
 }
 

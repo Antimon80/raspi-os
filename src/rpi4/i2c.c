@@ -196,7 +196,7 @@ static void i2c_finish_transfer(int error)
 
     if (waiting_id >= 0)
     {
-        task_wakeup(waiting_id);
+        task_wakeup_irq_disabled(waiting_id);
     }
 }
 
@@ -543,7 +543,6 @@ void i2c_handle_irq(void)
 
     if (status & (BSC_S_ERR | BSC_S_CLKT))
     {
-        i2c_debug_status("irq-error", status);
         i2c_reset_controller();
         i2c_finish_transfer(-1);
         return;
@@ -562,7 +561,6 @@ void i2c_handle_irq(void)
 
     if (status & (BSC_S_ERR | BSC_S_CLKT))
     {
-        i2c_debug_status("irq-post-service-error", status);
         i2c_reset_controller();
         i2c_finish_transfer(-1);
         return;
