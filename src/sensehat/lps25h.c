@@ -1,13 +1,21 @@
 #include "sensehat/lps25h.h"
 #include "rpi4/i2c.h"
 
-#define LPS25H_ADDR 0x5c
-#define LPS25H_WHO_AM_I 0x0f
-#define LPS25H_CTRL_REG1 0x20
-#define LPS25H_PRESS_OUT_XL 0x28
-#define LPS25H_WHO_VALUE 0xbd
-#define LPS25H_AUTO_INC 0x80
+#define LPS25H_ADDR 0x5c         // I2C address of the LPS25H pressure sensor
+#define LPS25H_WHO_AM_I 0x0f     // Device ID register
+#define LPS25H_WHO_VALUE 0xbd    // Expected WHO_AM_I value
+#define LPS25H_CTRL_REG1 0x20    // Control register for power mode, ODR and BDU
+#define LPS25H_PRESS_OUT_XL 0x28 // Pressure output register, lowest byte
+#define LPS25H_AUTO_INC 0x80     // Auto-increment flag for multi-byte reads
 
+/*
+ * Initialize the LPS25H pressure sensor.
+ *
+ * Verifies the device identity and enables the sensor with 1 Hz output data
+ * rate and block data update.
+ *
+ * Returns 0 on success, -1 on failure.
+ */
 int lps25h_init(void)
 {
     uint8_t who = 0;
@@ -29,6 +37,14 @@ int lps25h_init(void)
     return 0;
 }
 
+/*
+ * Read the raw 24-bit pressure value from the sensor.
+ *
+ * The pressure registers are read as XL, L and H bytes using auto-increment.
+ * The result is sign-extended to a 32-bit integer.
+ *
+ * Returns 0 on success, -1 on failure.
+ */
 int lps25h_read_pressure_raw(int32_t *pressure_raw)
 {
     uint8_t reg = LPS25H_PRESS_OUT_XL | LPS25H_AUTO_INC;
@@ -49,13 +65,21 @@ int lps25h_read_pressure_raw(int32_t *pressure_raw)
 
     if (raw & 0x00800000)
     {
-        raw |= 0xff00000;
+        raw |= 0xff000000;
     }
 
     *pressure_raw = raw;
     return 0;
 }
 
+/*
+ * Read pressure and convert it to centi-hPa.
+ *
+ * The LPS25H pressure sensitivity is 4096 LSB/hPa, so the converted value is
+ * stored as hPa * 100 to avoid floating point arithmetic.
+ *
+ * Returns 0 on success, -1 on failure.
+ */
 int lps25h_read_pressure_centi_hpa(int32_t *pressure_centi_hpa, int32_t *pressure_raw)
 {
     int32_t raw;

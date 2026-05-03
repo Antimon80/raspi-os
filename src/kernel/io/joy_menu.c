@@ -35,6 +35,8 @@ static const char *menu_entries[] =
     {
         "help",
         "ps",
+        "start env",
+        "stop env",
         "start tictactoe",
         "stop tictactoe",
         "start heart",
@@ -45,6 +47,7 @@ static const char *menu_entries[] =
         "stop slow",
         "start gol",
         "stop gol",
+        "env history",
         "trace dump",
 };
 

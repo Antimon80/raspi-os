@@ -32,16 +32,16 @@ void main(void)
     i2c_init();
     i2c_bus_init();
 
-    if (hdmi_init())
-    {
-        hdmi_ok = 1;
-        hdmi_show_bootscreen();
-        hdmi_clear_console();
-    }
-    else
-    {
-        uart_puts("HDMI init failed\n");
-    }
+    // if (hdmi_init())
+    // {
+    //     hdmi_ok = 1;
+    //     hdmi_show_bootscreen();
+    //     hdmi_clear_console();
+    // }
+    // else
+    // {
+    //     uart_puts("HDMI init failed\n");
+    // }
 
     task_init_system();
     scheduler_init();
@@ -56,19 +56,19 @@ void main(void)
 
     uart_set_rx_task(shell_id);
 
-    if (hdmi_ok)
-    {
-        int hdmi_console_id = task_create_system(hdmi_console_task, "hdmi_console");
-        if (hdmi_console_id < 0)
-        {
-            uart_puts("Failed to create HDMI console task\n");
-        }
-        else
-        {
-            hdmi_console_register_task_id(hdmi_console_id);
-            hdmi_console_enable(1);
-        }
-    }
+    // if (hdmi_ok)
+    // {
+    //     int hdmi_console_id = task_create_system(hdmi_console_task, "hdmi_console");
+    //     if (hdmi_console_id < 0)
+    //     {
+    //         uart_puts("Failed to create HDMI console task\n");
+    //     }
+    //     else
+    //     {
+    //         hdmi_console_register_task_id(hdmi_console_id);
+    //         hdmi_console_enable(1);
+    //     }
+    // }
 
     int joystick_id = task_create_system(joystick_task, "joystick");
     if (joystick_id < 0)

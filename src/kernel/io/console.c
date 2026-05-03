@@ -68,6 +68,19 @@ void console_put_uint(unsigned int value)
     }
 }
 
+void console_put_int(int value)
+{
+    if (value < 0)
+    {
+        console_putc('-');
+
+        console_put_uint((unsigned int)(-(value + 1)) + 1u);
+        return;
+    }
+
+    console_put_uint((unsigned int)value);
+}
+
 void console_put_u64(uint64_t value)
 {
     char buffer[32];

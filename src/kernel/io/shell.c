@@ -8,13 +8,17 @@
 #include "kernel/tasks/tictactoe_task.h"
 #include "kernel/tasks/gol_task.h"
 #include "kernel/tasks/led_task.h"
+#include "kernel/tasks/env_task.h"
 #include "kernel/debug/trace.h"
 #include "sensehat/led_matrix.h"
 #include "rpi4/uart.h"
 #include "util/string.h"
 #include "util/convert.h"
 
+#include <stdint.h>
+
 #define SHELL_BUFFER_SIZE 64
+#define ENV_HISTORY_DUMP_MAX 64
 
 typedef struct
 {
@@ -31,7 +35,8 @@ static const startable_task_t startable_tasks[] = {
     {"slow", worker_slow_task},
     {"burst", burst_task},
     {"tictactoe", tictactoe_task},
-    {"gol", gol_task}};
+    {"gol", gol_task},
+    {"env", env_task}};
 
 /*
  * Print a textual representation of a task state.
@@ -153,6 +158,8 @@ int shell_find_task_by_name(const char *name)
 void shell_cmd_help(void)
 {
     console_puts("Commands: \n");
+    console_puts("  env\n");
+    console_puts("  env history\n");
     console_puts("  help\n");
     console_puts("  heap dump\n");
     console_puts("  heap stats\n");
@@ -417,6 +424,102 @@ static void shell_cmd_trace_clear(void)
     console_puts("trace cleared\n");
 }
 
+static void shell_print_centi(int32_t value)
+{
+    if (value < 0)
+    {
+        console_puts("-");
+        value = -value;
+    }
+
+    console_put_uint((unsigned int)(value / 100));
+    console_puts(".");
+
+    if ((value % 100) < 10)
+    {
+        console_puts("0");
+    }
+
+    console_put_uint((unsigned int)(value % 100));
+}
+
+static void shell_cmd_env(void)
+{
+    env_sample_t sample;
+
+    if (env_get_latest(&sample) < 0)
+    {
+        console_puts("no env sample available\n");
+        return;
+    }
+
+    console_puts("Environment sample:\n");
+
+    console_puts(" pressure raw: ");
+    console_put_int(sample.pressure_raw);
+    console_puts("\n");
+
+    console_puts(" pressure: ");
+    shell_print_centi(sample.pressure_centi_hpa);
+    console_puts(" hPa\n");
+
+    console_puts(" humidity raw: ");
+    console_put_int((int)sample.humidity_raw);
+    console_puts("\n");
+
+    console_puts(" humidity: ");
+    shell_print_centi(sample.humidity_centi_percent);
+    console_puts(" %\n");
+
+    console_puts(" temperature raw: ");
+    console_put_int((int)sample.temperature_raw);
+    console_puts("\n");
+
+    console_puts(" temperature: ");
+    shell_print_centi(sample.temperature_centi_c);
+    console_puts(" C\n");
+
+    console_puts(" tick: ");
+    console_put_u64(sample.tick);
+    console_puts("\n");
+}
+
+static void shell_cmd_env_history(void)
+{
+    env_sample_t samples[ENV_HISTORY_DUMP_MAX];
+    unsigned int count;
+
+    count = env_get_history(samples, ENV_HISTORY_DUMP_MAX);
+
+    if (count == 0)
+    {
+        console_puts("no env history available\n");
+        return;
+    }
+
+    console_puts("Environment history:\n");
+
+    for (unsigned int i = 0; i < count; i++)
+    {
+        console_puts("[");
+        console_put_uint(i);
+        console_puts("] tick=");
+        console_put_u64(samples[i].tick);
+
+        console_puts(" pressure=");
+        shell_print_centi(samples[i].pressure_centi_hpa);
+        console_puts("hPa");
+
+        console_puts(" humidity=");
+        shell_print_centi(samples[i].humidity_centi_percent);
+        console_puts("%");
+
+        console_puts(" temperature=");
+        shell_print_centi(samples[i].temperature_centi_c);
+        console_puts("C\n");
+    }
+}
+
 /*
  * Execute one shell command line.
  */
@@ -425,6 +528,14 @@ void shell_execute_command(const char *cmd)
     if (str_equals(cmd, "help"))
     {
         shell_cmd_help();
+    }
+    else if (str_equals(cmd, "env history"))
+    {
+        shell_cmd_env_history();
+    }
+    else if (str_equals(cmd, "env"))
+    {
+        shell_cmd_env();
     }
     else if (str_equals(cmd, "ps"))
     {
