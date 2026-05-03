@@ -25,9 +25,15 @@ int joystick_get_task_id(void)
     return joystick_task_id;
 }
 
-void joystick_set_event_handler(joystick_event_handler_t handler)
+int joystick_set_event_handler(joystick_event_handler_t handler)
 {
+    if (!handler)
+    {
+        return -1;
+    }
+
     joystick_event_handler = handler;
+    return 0;
 }
 
 void joystick_clear_event_handler(void)

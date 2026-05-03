@@ -1,87 +1,69 @@
 #include "kernel/tasks/tictactoe_task.h"
 #include "kernel/tasks/joystick_task.h"
 #include "kernel/tasks/led_task.h"
-#include "kernel/io/shell.h"
+#include "kernel/io/console.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/irq.h"
 #include "kernel/timer.h"
-#include "rpi4/uart.h"
 #include "rpi4/hdmi.h"
 #include "util/string.h"
 
 /* Game modes. */
-#define TTT_MODE_CPU_EASY   0
-#define TTT_MODE_CPU_HARD   1
-#define TTT_MODE_PVP        2
+#define TTT_MODE_CPU_EASY 0
+#define TTT_MODE_CPU_HARD 1
+#define TTT_MODE_PVP 2
 
 /* Cell values. */
-#define TTT_CELL_EMPTY  0
-#define TTT_CELL_X      1
-#define TTT_CELL_O      2
+#define TTT_CELL_EMPTY 0
+#define TTT_CELL_X 1
+#define TTT_CELL_O 2
 
 /* Game states. */
-#define TTT_STATE_MENU      0
-#define TTT_STATE_PLAYING   1
-#define TTT_STATE_RESULT    2
+#define TTT_STATE_MENU 0
+#define TTT_STATE_PLAYING 1
+#define TTT_STATE_RESULT 2
 
 /* Result menu items. */
-#define TTT_RESULT_PLAY_AGAIN   0
-#define TTT_RESULT_MODE_MENU    1
-#define TTT_RESULT_EXIT         2
-
-/* ANSI colors and styles. */
-#define ANSI_RESET      "\x1b[0m"
-#define ANSI_BOLD       "\x1b[1m"
-
-#define ANSI_FG_X       "\x1b[1;38;5;196m"
-#define ANSI_FG_O       "\x1b[1;38;5;33m"
-#define ANSI_FG_WIN     "\x1b[1;38;5;226m"
-#define ANSI_FG_DRAW    "\x1b[38;5;244m"
-#define ANSI_FG_CPU     "\x1b[38;5;213m"
-#define ANSI_FG_GREEN   "\x1b[38;5;46m"
-#define ANSI_FG_GRID    "\x1b[38;5;240m"
-#define ANSI_FG_TITLE   "\x1b[1;38;5;255m"
-#define ANSI_FG_HINT    "\x1b[38;5;242m"
-
-#define ANSI_BG_CURSOR  "\x1b[48;5;237m"
-#define ANSI_BG_NORMAL  "\x1b[48;5;234m"
+#define TTT_RESULT_PLAY_AGAIN 0
+#define TTT_RESULT_MODE_MENU 1
+#define TTT_RESULT_EXIT 2
 
 /* HDMI text palette for the Tic-Tac-Toe screen. */
-#define HDMI_TTT_BG          0x00161F2Au
-#define HDMI_TTT_TITLE       0x0098F4FFu
-#define HDMI_TTT_MUTED       0x0087A3B7u
-#define HDMI_TTT_X           0x00FF6B6Bu
-#define HDMI_TTT_O           0x0041E4FFu
-#define HDMI_TTT_WIN         0x00FFCE54u
-#define HDMI_TTT_CURSOR      0x0048E27Bu
-#define HDMI_TTT_LINE        0x0028C7FAu
-#define HDMI_TTT_STATUS      0x00F2F6F8u
-#define TTT_HDMI_LINE_WIDTH  44
-#define TTT_HDMI_CLEAR_FROM  24
-#define TTT_JOY_QUEUE_SIZE   16
+#define HDMI_TTT_BG 0x00161F2Au
+#define HDMI_TTT_TITLE 0x0098F4FFu
+#define HDMI_TTT_MUTED 0x0087A3B7u
+#define HDMI_TTT_X 0x00FF6B6Bu
+#define HDMI_TTT_O 0x0041E4FFu
+#define HDMI_TTT_WIN 0x00FFCE54u
+#define HDMI_TTT_CURSOR 0x0048E27Bu
+#define HDMI_TTT_LINE 0x0028C7FAu
+#define HDMI_TTT_STATUS 0x00F2F6F8u
+#define TTT_HDMI_LINE_WIDTH 44
+#define TTT_HDMI_CLEAR_FROM 24
+#define TTT_JOY_QUEUE_SIZE 16
 
 /* Sense HAT LED mirror palette. */
-#define TTT_LED_LINE_R       255
-#define TTT_LED_LINE_G       255
-#define TTT_LED_LINE_B       255
-#define TTT_LED_X_R          255
-#define TTT_LED_X_G          80
-#define TTT_LED_X_B          80
-#define TTT_LED_O_R          60
-#define TTT_LED_O_G          170
-#define TTT_LED_O_B          255
-#define TTT_LED_WIN_R        255
-#define TTT_LED_WIN_G        210
-#define TTT_LED_WIN_B        80
-#define TTT_LED_CURSOR_R     40
-#define TTT_LED_CURSOR_G     200
-#define TTT_LED_CURSOR_B     80
-#define TTT_LED_MODE_R       80
-#define TTT_LED_MODE_G       220
-#define TTT_LED_MODE_B       255
-#define TTT_LED_EXIT_R       255
-#define TTT_LED_EXIT_G       90
-#define TTT_LED_EXIT_B       180
+#define TTT_LED_LINE_R 255
+#define TTT_LED_LINE_G 255
+#define TTT_LED_LINE_B 255
+#define TTT_LED_X_R 255
+#define TTT_LED_X_G 80
+#define TTT_LED_X_B 80
+#define TTT_LED_O_R 60
+#define TTT_LED_O_G 170
+#define TTT_LED_O_B 255
+#define TTT_LED_WIN_R 255
+#define TTT_LED_WIN_G 210
+#define TTT_LED_WIN_B 80
+#define TTT_LED_CURSOR_R 40
+#define TTT_LED_CURSOR_G 200
+#define TTT_LED_CURSOR_B 80
+#define TTT_LED_MODE_R 80
+#define TTT_LED_MODE_G 220
+#define TTT_LED_MODE_B 255
+#define TTT_LED_EXIT_R 255
+#define TTT_LED_EXIT_G 90
+#define TTT_LED_EXIT_B 180
 
 /* Game structure. */
 typedef struct
@@ -98,15 +80,18 @@ typedef struct
     int win_line;
 } ttt_game_t;
 
+static volatile joy_event_t ttt_joy_queue[TTT_JOY_QUEUE_SIZE];
+static volatile unsigned int ttt_joy_head = 0;
+static volatile unsigned int ttt_joy_tail = 0;
+static int ttt_task_id = -1;
+static int ttt_led_enabled = 0;
+static int ttt_hdmi_enabled = 0;
+
 /* Winning lines. */
 static const int ttt_lines[8][3] = {
-    {0, 1, 2}, {3, 4, 5}, {6, 7, 8},
-    {0, 3, 6}, {1, 4, 7}, {2, 5, 8},
-    {0, 4, 8}, {2, 4, 6}
-};
+    {0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {0, 3, 6}, {1, 4, 7}, {2, 5, 8}, {0, 4, 8}, {2, 4, 6}};
 
-static void u(const char *s)  { uart_puts(s); }
-static void h(const char *s)  { hdmi_puts(s); }
+static void h(const char *s) { hdmi_puts(s); }
 static void hc(uint32_t fg, const char *s)
 {
     hdmi_set_text_colors(fg, HDMI_TTT_BG);
@@ -144,12 +129,6 @@ static void ttt_hdmi_clear_from(uint32_t row)
         row++;
     }
 }
-
-static volatile joy_event_t ttt_joy_queue[TTT_JOY_QUEUE_SIZE];
-static volatile unsigned int ttt_joy_head = 0;
-static volatile unsigned int ttt_joy_tail = 0;
-static int ttt_task_id = -1;
-static int ttt_led_enabled = 0;
 
 static int ttt_joy_queue_is_empty(void)
 {
@@ -211,8 +190,10 @@ static int ttt_is_on_win_line(const ttt_game_t *game, int index);
 
 static const char *ttt_mode_label(int mode)
 {
-    if (mode == TTT_MODE_CPU_EASY) return "Easy CPU";
-    if (mode == TTT_MODE_CPU_HARD) return "Hard CPU";
+    if (mode == TTT_MODE_CPU_EASY)
+        return "Easy CPU";
+    if (mode == TTT_MODE_CPU_HARD)
+        return "Hard CPU";
     return "Two Players";
 }
 
@@ -430,7 +411,8 @@ static int ttt_check_winner_line(const int *board)
  */
 static int ttt_is_on_win_line(const ttt_game_t *game, int index)
 {
-    if (game->win_line < 0) return 0;
+    if (game->win_line < 0)
+        return 0;
     return (ttt_lines[game->win_line][0] == index ||
             ttt_lines[game->win_line][1] == index ||
             ttt_lines[game->win_line][2] == index);
@@ -442,20 +424,25 @@ static int ttt_is_on_win_line(const ttt_game_t *game, int index)
 static int ttt_minimax(int *board, int depth, int is_maximizing, int moves_left)
 {
     int winner = ttt_check_winner(board);
-    if (winner == TTT_CELL_O) return  10 - depth;
-    if (winner == TTT_CELL_X) return -10 + depth;
-    if (moves_left == 0)      return 0;
+    if (winner == TTT_CELL_O)
+        return 10 - depth;
+    if (winner == TTT_CELL_X)
+        return -10 + depth;
+    if (moves_left == 0)
+        return 0;
 
     if (is_maximizing)
     {
         int best = -100;
         for (int i = 0; i < 9; i++)
         {
-            if (board[i] != TTT_CELL_EMPTY) continue;
+            if (board[i] != TTT_CELL_EMPTY)
+                continue;
             board[i] = TTT_CELL_O;
             int score = ttt_minimax(board, depth + 1, 0, moves_left - 1);
             board[i] = TTT_CELL_EMPTY;
-            if (score > best) best = score;
+            if (score > best)
+                best = score;
         }
         return best;
     }
@@ -464,11 +451,13 @@ static int ttt_minimax(int *board, int depth, int is_maximizing, int moves_left)
         int best = 100;
         for (int i = 0; i < 9; i++)
         {
-            if (board[i] != TTT_CELL_EMPTY) continue;
+            if (board[i] != TTT_CELL_EMPTY)
+                continue;
             board[i] = TTT_CELL_X;
             int score = ttt_minimax(board, depth + 1, 1, moves_left - 1);
             board[i] = TTT_CELL_EMPTY;
-            if (score < best) best = score;
+            if (score < best)
+                best = score;
         }
         return best;
     }
@@ -479,10 +468,13 @@ static int ttt_find_winning_move(const int *board, int player)
     int test_board[9];
     for (int i = 0; i < 9; i++)
     {
-        if (board[i] != TTT_CELL_EMPTY) continue;
-        for (int j = 0; j < 9; j++) test_board[j] = board[j];
+        if (board[i] != TTT_CELL_EMPTY)
+            continue;
+        for (int j = 0; j < 9; j++)
+            test_board[j] = board[j];
         test_board[i] = player;
-        if (ttt_check_winner(test_board) == player) return i;
+        if (ttt_check_winner(test_board) == player)
+            return i;
     }
     return -1;
 }
@@ -501,10 +493,12 @@ static int ttt_pick_cpu_move_easy(const ttt_game_t *game)
     int move;
 
     move = ttt_find_winning_move(game->board, TTT_CELL_O);
-    if (move >= 0) return move;
+    if (move >= 0)
+        return move;
 
     move = ttt_find_winning_move(game->board, TTT_CELL_X);
-    if (move >= 0) return move;
+    if (move >= 0)
+        return move;
 
     for (unsigned int i = 0; i < sizeof(preference) / sizeof(preference[0]); i++)
         if (game->board[preference[i]] == TTT_CELL_EMPTY)
@@ -520,25 +514,27 @@ static int ttt_pick_cpu_move_hard(const ttt_game_t *game)
 {
     int board_copy[9];
     int best_score = -100;
-    int best_move  = -1;
+    int best_move = -1;
     int empty_count = 0;
 
     for (int i = 0; i < 9; i++)
     {
         board_copy[i] = game->board[i];
-        if (game->board[i] == TTT_CELL_EMPTY) empty_count++;
+        if (game->board[i] == TTT_CELL_EMPTY)
+            empty_count++;
     }
 
     for (int i = 0; i < 9; i++)
     {
-        if (board_copy[i] != TTT_CELL_EMPTY) continue;
+        if (board_copy[i] != TTT_CELL_EMPTY)
+            continue;
         board_copy[i] = TTT_CELL_O;
         int score = ttt_minimax(board_copy, 0, 0, empty_count - 1);
         board_copy[i] = TTT_CELL_EMPTY;
         if (score > best_score)
         {
             best_score = score;
-            best_move  = i;
+            best_move = i;
         }
     }
     return best_move;
@@ -549,14 +545,15 @@ static int ttt_pick_cpu_move_hard(const ttt_game_t *game)
  */
 static void ttt_reset_board(ttt_game_t *game)
 {
-    for (int i = 0; i < 9; i++) game->board[i] = TTT_CELL_EMPTY;
-    game->cursor         = 4;
+    for (int i = 0; i < 9; i++)
+        game->board[i] = TTT_CELL_EMPTY;
+    game->cursor = 4;
     game->current_player = TTT_CELL_X;
-    game->winner         = TTT_CELL_EMPTY;
-    game->moves          = 0;
-    game->result_index   = 0;
-    game->win_line       = -1;
-    game->state          = TTT_STATE_PLAYING;
+    game->winner = TTT_CELL_EMPTY;
+    game->moves = 0;
+    game->result_index = 0;
+    game->win_line = -1;
+    game->state = TTT_STATE_PLAYING;
 }
 
 /*
@@ -567,16 +564,16 @@ static void ttt_finish_if_needed(ttt_game_t *game)
     int winner = ttt_check_winner(game->board);
     if (winner != TTT_CELL_EMPTY)
     {
-        game->winner   = winner;
+        game->winner = winner;
         game->win_line = ttt_check_winner_line(game->board);
-        game->state    = TTT_STATE_RESULT;
+        game->state = TTT_STATE_RESULT;
         return;
     }
     if (game->moves >= 9)
     {
-        game->winner   = TTT_CELL_EMPTY;
+        game->winner = TTT_CELL_EMPTY;
         game->win_line = -1;
-        game->state    = TTT_STATE_RESULT;
+        game->state = TTT_STATE_RESULT;
     }
 }
 
@@ -585,11 +582,13 @@ static void ttt_finish_if_needed(ttt_game_t *game)
  */
 static void ttt_apply_move(ttt_game_t *game, int index)
 {
-    if (index < 0 || index >= 9) return;
-    if (game->board[index] != TTT_CELL_EMPTY || game->state != TTT_STATE_PLAYING) return;
+    if (index < 0 || index >= 9)
+        return;
+    if (game->board[index] != TTT_CELL_EMPTY || game->state != TTT_STATE_PLAYING)
+        return;
 
     game->board[index] = game->current_player;
-    game->cursor       = index;
+    game->cursor = index;
     game->moves++;
     ttt_finish_if_needed(game);
 
@@ -602,8 +601,8 @@ static void ttt_apply_move(ttt_game_t *game, int index)
  */
 static int ttt_is_cpu_turn(const ttt_game_t *game)
 {
-    return game->state    == TTT_STATE_PLAYING &&
-           game->mode     != TTT_MODE_PVP      &&
+    return game->state == TTT_STATE_PLAYING &&
+           game->mode != TTT_MODE_PVP &&
            game->current_player == TTT_CELL_O;
 }
 
@@ -612,11 +611,13 @@ static int ttt_is_cpu_turn(const ttt_game_t *game)
  */
 static void ttt_run_cpu_turn(ttt_game_t *game)
 {
-    if (!ttt_is_cpu_turn(game)) return;
+    if (!ttt_is_cpu_turn(game))
+        return;
     int move = (game->mode == TTT_MODE_CPU_HARD)
-               ? ttt_pick_cpu_move_hard(game)
-               : ttt_pick_cpu_move_easy(game);
-    if (move >= 0) ttt_apply_move(game, move);
+                   ? ttt_pick_cpu_move_hard(game)
+                   : ttt_pick_cpu_move_easy(game);
+    if (move >= 0)
+        ttt_apply_move(game, move);
 }
 
 /*
@@ -627,10 +628,14 @@ static void ttt_move_cursor(ttt_game_t *game, char input)
     int row = game->cursor / 3;
     int col = game->cursor % 3;
 
-    if      (input == 'w' || input == 'W') row = (row + 2) % 3;
-    else if (input == 's' || input == 'S') row = (row + 1) % 3;
-    else if (input == 'a' || input == 'A') col = (col + 2) % 3;
-    else if (input == 'd' || input == 'D') col = (col + 1) % 3;
+    if (input == 'w' || input == 'W')
+        row = (row + 2) % 3;
+    else if (input == 's' || input == 'S')
+        row = (row + 1) % 3;
+    else if (input == 'a' || input == 'A')
+        col = (col + 2) % 3;
+    else if (input == 'd' || input == 'D')
+        col = (col + 1) % 3;
 
     game->cursor = row * 3 + col;
 }
@@ -641,9 +646,12 @@ static void ttt_render_cell_hdmi(const ttt_game_t *game, int index)
     int is_cursor = (game->cursor == index) && !ttt_is_cpu_turn(game) && ttt_cursor_visible();
     int is_winning = ttt_is_on_win_line(game, index) && game->winner != TTT_CELL_EMPTY;
 
-    if (is_cursor)       hc(HDMI_TTT_CURSOR, "[");
-    else if (is_winning) hc(HDMI_TTT_WIN, "*");
-    else                 h(" ");
+    if (is_cursor)
+        hc(HDMI_TTT_CURSOR, "[");
+    else if (is_winning)
+        hc(HDMI_TTT_WIN, "*");
+    else
+        h(" ");
 
     if (value == TTT_CELL_X)
     {
@@ -658,15 +666,18 @@ static void ttt_render_cell_hdmi(const ttt_game_t *game, int index)
         h(" ");
     }
 
-    if (is_cursor)       hc(HDMI_TTT_CURSOR, "]");
-    else if (is_winning) hc(HDMI_TTT_WIN, "*");
-    else                 h(" ");
+    if (is_cursor)
+        hc(HDMI_TTT_CURSOR, "]");
+    else if (is_winning)
+        hc(HDMI_TTT_WIN, "*");
+    else
+        h(" ");
 }
 
 static void ttt_render_hdmi_header(const ttt_game_t *game)
 {
     ttt_hdmi_write_line(0u, HDMI_TTT_TITLE, "TIC TAC TOE");
-    ttt_hdmi_write_line(1u, HDMI_TTT_LINE,  "===========");
+    ttt_hdmi_write_line(1u, HDMI_TTT_LINE, "===========");
     ttt_hdmi_write_line(2u, HDMI_TTT_MUTED, "");
     ttt_hdmi_write_line(3u, HDMI_TTT_MUTED, ttt_mode_label(game->mode));
 
@@ -678,8 +689,7 @@ static void ttt_render_hdmi_header(const ttt_game_t *game)
                 "Status: CPU is thinking   ",
                 "Status: CPU is thinking.  ",
                 "Status: CPU is thinking.. ",
-                "Status: CPU is thinking..."
-            };
+                "Status: CPU is thinking..."};
             uint64_t phase = (timer_get_ticks() / 8u) % 4u;
             ttt_hdmi_write_line(4u, HDMI_TTT_O, "Turn: CPU");
             ttt_hdmi_write_line(5u, HDMI_TTT_STATUS, frames[phase]);
@@ -707,112 +717,6 @@ static void ttt_render_hdmi_header(const ttt_game_t *game)
         }
 
         ttt_hdmi_write_line(5u, HDMI_TTT_MUTED, "");
-    }
-}
-
-/*
- * Write a single colored player token to UART.
- */
-static void u_player(int player)
-{
-    if (player == TTT_CELL_X)
-    {
-        u(ANSI_FG_X);
-        u(ANSI_BOLD "X");
-    }
-    else
-    {
-        u(ANSI_FG_O);
-        u(ANSI_BOLD "O");
-    }
-    u(ANSI_RESET);
-}
-
-/*
- * Render one board cell to UART.
- *
- * The current cursor position is highlighted with a background color.
- * Winning cells are rendered in gold after the game ends.
- */
-static void ttt_render_cell_uart(const ttt_game_t *game, int index)
-{
-    int value = game->board[index];
-    int is_cursor = (game->cursor == index) && !ttt_is_cpu_turn(game);
-    int is_winning = ttt_is_on_win_line(game, index) && game->winner != TTT_CELL_EMPTY;
-
-    if (is_cursor)
-    {
-        u(ANSI_FG_GREEN ANSI_BOLD "[");
-    }
-    else
-    {
-        u(" ");
-    }
-
-    if (value == TTT_CELL_X)
-    {
-        u(is_winning ? ANSI_FG_WIN ANSI_BOLD "X" : ANSI_FG_X ANSI_BOLD "X");
-    }
-    else if (value == TTT_CELL_O)
-    {
-        u(is_winning ? ANSI_FG_WIN ANSI_BOLD "O" : ANSI_FG_O ANSI_BOLD "O");
-    }
-    else
-    {
-        u(" ");
-    }
-
-    if (is_cursor)
-    {
-        u(ANSI_FG_GREEN ANSI_BOLD "]");
-    }
-    else
-    {
-        u(" ");
-    }
-    u(ANSI_RESET);
-}
-
-/*
- * Render one board cell to HDMI.
- *
- * Each cell always occupies exactly three characters so the board layout
- * remains stable while the cursor moves.
- */
-static void ttt_render_board_uart(const ttt_game_t *game)
-{
-    u("\n" ANSI_FG_TITLE "TIC TAC TOE\n" ANSI_RESET "\n");
-
-    if (ttt_is_cpu_turn(game))
-    {
-        u(ANSI_FG_CPU "CPU is thinking...\n" ANSI_RESET);
-    }
-    else if (game->state == TTT_STATE_PLAYING)
-    {
-        u("Turn: ");
-        u_player(game->current_player);
-        u("\n");
-    }
-    u("\n");
-
-    for (int row = 0; row < 3; row++)
-    {
-        for (int col = 0; col < 3; col++)
-        {
-            int index = row * 3 + col;
-            ttt_render_cell_uart(game, index);
-
-            if (col < 2)
-            {
-                u(ANSI_FG_GRID "|" ANSI_RESET);
-            }
-        }
-        u("\n");
-
-        if (row < 2)
-        {
-            u(ANSI_FG_GRID "---+---+---\n" ANSI_RESET);
-        }
     }
 }
 
@@ -846,7 +750,7 @@ static void ttt_render_board_hdmi(const ttt_game_t *game)
     }
 
     ttt_hdmi_write_line(14u, HDMI_TTT_MUTED, "[ ] cursor   * * winning line");
-    ttt_hdmi_write_line(15u, HDMI_TTT_MUTED, "Move with W A S D and confirm with SPACE");
+    ttt_hdmi_write_line(15u, HDMI_TTT_MUTED, "Move with joystick, press center");
     ttt_hdmi_clear_from(16u);
 }
 
@@ -863,102 +767,24 @@ static void ttt_render_menu_hdmi(const ttt_game_t *game)
     for (int i = 0; i < 3; i++)
     {
         hdmi_set_cursor(0u, 6u + (uint32_t)i);
-        if (game->menu_index == i) hc(HDMI_TTT_CURSOR, "> ");
-        else                       h("  ");
+        if (game->menu_index == i)
+            hc(HDMI_TTT_CURSOR, "> ");
+        else
+            h("  ");
         hc(game->menu_index == i ? HDMI_TTT_STATUS : HDMI_TTT_MUTED, modes[i]);
         ttt_hdmi_pad_line(2 + str_length(modes[i]));
     }
 
     ttt_hdmi_write_line(10u, HDMI_TTT_MUTED, "");
     ttt_hdmi_write_line(11u, HDMI_TTT_MUTED, "X starts every round");
-    ttt_hdmi_write_line(12u, HDMI_TTT_MUTED, "Use W and S, then press SPACE");
-    ttt_hdmi_write_line(13u, HDMI_TTT_MUTED, "During the game: W A S D and SPACE");
+    ttt_hdmi_write_line(12u, HDMI_TTT_MUTED, "Use UP/DOWN, then CENTER");
+    ttt_hdmi_write_line(13u, HDMI_TTT_MUTED, "During the game: directions and CENTER");
     ttt_hdmi_clear_from(14u);
-}
-
-/*
- * Render the mode selection menu.
- */
-static void ttt_render_menu(const ttt_game_t *game)
-{
-    const char *modes[3] = {"Easy CPU", "Hard CPU", "Two Players"};
-
-    u("\n" ANSI_FG_TITLE "TIC TAC TOE\n" ANSI_RESET "\n");
-    u(ANSI_FG_HINT "Choose mode with W/S and confirm with SPACE.\n\n" ANSI_RESET);
-
-    for (int i = 0; i < 3; i++)
-    {
-        if (game->menu_index == i)
-        {
-            u(ANSI_FG_GREEN ANSI_BOLD);
-            u("  > ");
-            u(modes[i]);
-            u(ANSI_RESET "\n");
-        }
-        else
-        {
-            u(ANSI_FG_HINT);
-            u("    ");
-            u(modes[i]);
-            u(ANSI_RESET "\n");
-        }
-    }
-
-    u("\n" ANSI_FG_HINT "Controls: W A S D move, SPACE places a mark.\nRed = X   Blue = O\n" ANSI_RESET);
-}
-
-/*
- * Render the end-of-round screen and its action menu.
- */
-static void ttt_render_result(const ttt_game_t *game)
-{
-    ttt_render_board_uart(game);
-
-    u("\n");
-
-    if (game->winner == TTT_CELL_X)
-    {
-        u(ANSI_FG_WIN ANSI_BOLD "X wins!\n" ANSI_RESET);
-    }
-    else if (game->winner == TTT_CELL_O)
-    {
-        if (game->mode != TTT_MODE_PVP)
-        {
-            u(ANSI_FG_CPU ANSI_BOLD "CPU wins!\n" ANSI_RESET);
-        }
-        else
-        {
-            u(ANSI_FG_O ANSI_BOLD "O wins!\n" ANSI_RESET);
-        }
-    }
-    else
-    {
-        u(ANSI_FG_DRAW ANSI_BOLD "Draw.\n" ANSI_RESET);
-    }
-
-    u("\n" ANSI_FG_HINT "Choose with W/S and confirm with SPACE.\n\n" ANSI_RESET);
-
-    const char *options[3] = {"Play again", "Change mode", "Back to shell"};
-    for (int i = 0; i < 3; i++)
-    {
-        if (game->result_index == i)
-        {
-            u(ANSI_FG_GREEN ANSI_BOLD);
-            u("  > "); u(options[i]); u("\n");
-            u(ANSI_RESET);
-        }
-        else
-        {
-            u(ANSI_FG_HINT);
-            u("    "); u(options[i]); u("\n");
-            u(ANSI_RESET);
-        }
-    }
 }
 
 static void ttt_render_result_hdmi(const ttt_game_t *game)
 {
-    const char *options[3] = {"Play again", "Change mode", "Back to shell"};
+    const char *options[3] = {"Play again", "Change mode", "Exit game"};
 
     ttt_render_board_hdmi(game);
     ttt_hdmi_write_line(16u, HDMI_TTT_MUTED, "");
@@ -986,32 +812,15 @@ static void ttt_render_result_hdmi(const ttt_game_t *game)
 }
 
 /*
- * Render the current game screen to UART.
- */
-static void ttt_render_uart(const ttt_game_t *game)
-{
-    u("\x1b[2J\x1b[H");
-
-    if (game->state == TTT_STATE_MENU)
-    {
-        ttt_render_menu(game);
-    }
-    else if (game->state == TTT_STATE_PLAYING)
-    {
-        ttt_render_board_uart(game);
-        u("\n" ANSI_FG_HINT "W A S D move    SPACE place\nGreen brackets mark the current field.\n" ANSI_RESET);
-    }
-    else
-    {
-        ttt_render_result(game);
-    }
-}
-
-/*
  * Render the current game screen to HDMI without clearing the whole console.
  */
 static void ttt_render_hdmi(const ttt_game_t *game, int clear)
 {
+    if (!ttt_hdmi_enabled)
+    {
+        return;
+    }
+
     if (clear)
     {
         hdmi_clear_console();
@@ -1029,63 +838,19 @@ static void ttt_render_hdmi(const ttt_game_t *game, int clear)
     {
         ttt_render_result_hdmi(game);
     }
-
-    ttt_render_led(game);
 }
 
-/*
- * Handle input while the mode menu is active.
- */
-static int ttt_handle_menu_input(ttt_game_t *game, char c)
+static void ttt_render_outputs(const ttt_game_t *game, int clear_hdmi)
 {
-    if (c == 'w' || c == 'W')
-        game->menu_index = (game->menu_index + 2) % 3;
-    else if (c == 's' || c == 'S')
-        game->menu_index = (game->menu_index + 1) % 3;
-    else if (c == ' ')
+    if (ttt_hdmi_enabled)
     {
-        if      (game->menu_index == 0) game->mode = TTT_MODE_CPU_EASY;
-        else if (game->menu_index == 1) game->mode = TTT_MODE_CPU_HARD;
-        else                             game->mode = TTT_MODE_PVP;
-        ttt_reset_board(game);
+        ttt_render_hdmi(game, clear_hdmi);
     }
-    return 1;
-}
 
-/*
- * Handle input while the result menu is active.
- */
-static int ttt_handle_result_input(ttt_game_t *game, char c)
-{
-    if      (c == 'w' || c == 'W') game->result_index = (game->result_index + 2) % 3;
-    else if (c == 's' || c == 'S') game->result_index = (game->result_index + 1) % 3;
-    else if (c == ' ')
+    if (ttt_led_enabled)
     {
-        if (game->result_index == TTT_RESULT_PLAY_AGAIN)
-            ttt_reset_board(game);
-        else if (game->result_index == TTT_RESULT_MODE_MENU)
-        {
-            game->state      = TTT_STATE_MENU;
-            game->menu_index = 0;
-        }
-        else
-            return 0;
+        ttt_render_led(game);
     }
-    return 1;
-}
-
-/*
- * Handle input while a round is in progress.
- */
-static void ttt_handle_play_input(ttt_game_t *game, char c)
-{
-    if (ttt_is_cpu_turn(game)) return;
-
-    if (c == 'w' || c == 'W' || c == 'a' || c == 'A' ||
-        c == 's' || c == 'S' || c == 'd' || c == 'D')
-        ttt_move_cursor(game, c);
-    else if (c == ' ')
-        ttt_apply_move(game, game->cursor);
 }
 
 static int ttt_handle_menu_joy(ttt_game_t *game, joy_event_t event)
@@ -1100,9 +865,12 @@ static int ttt_handle_menu_joy(ttt_game_t *game, joy_event_t event)
     }
     else if (event == JOY_EVENT_CENTER_RELEASE)
     {
-        if      (game->menu_index == 0) game->mode = TTT_MODE_CPU_EASY;
-        else if (game->menu_index == 1) game->mode = TTT_MODE_CPU_HARD;
-        else                             game->mode = TTT_MODE_PVP;
+        if (game->menu_index == 0)
+            game->mode = TTT_MODE_CPU_EASY;
+        else if (game->menu_index == 1)
+            game->mode = TTT_MODE_CPU_HARD;
+        else
+            game->mode = TTT_MODE_PVP;
         ttt_reset_board(game);
     }
 
@@ -1127,7 +895,7 @@ static int ttt_handle_result_joy(ttt_game_t *game, joy_event_t event)
         }
         else if (game->result_index == TTT_RESULT_MODE_MENU)
         {
-            game->state      = TTT_STATE_MENU;
+            game->state = TTT_STATE_MENU;
             game->menu_index = 0;
         }
         else
@@ -1171,49 +939,77 @@ static void ttt_handle_play_joy(ttt_game_t *game, joy_event_t event)
 /*
  * Tic-Tac-Toe task entry point.
  *
- * This task temporarily takes ownership of UART input, runs the game loop,
- * and restores shell input handling when it exits.
+ * The game uses the joystick for input and renders to the LED matrix
+ * and/or HDMI if those outputs are available. It does not take over
+ * UART input, so the shell remains usable while the game is running.
  */
 void tictactoe_task(void)
 {
     ttt_game_t game;
-    int previous_rx_task = uart_get_rx_task();
-    int shell_id         = shell_find_task_by_name("shell");
-    int running          = 1;
-    int uart_dirty       = 1;
-    int hdmi_dirty       = 1;
-    int last_state       = -1;
+    int running = 1;
+    int display_dirty = 1;
+    int last_state = -1;
     int last_cursor_blink = -1;
-    int last_cpu_phase   = -1;
+    int last_cpu_phase = -1;
 
-    game.mode           = TTT_MODE_CPU_EASY;
-    game.state          = TTT_STATE_MENU;
-    game.menu_index     = 0;
-    game.result_index   = 0;
-    game.cursor         = 4;
+    game.mode = TTT_MODE_CPU_EASY;
+    game.state = TTT_STATE_MENU;
+    game.menu_index = 0;
+    game.result_index = 0;
+    game.cursor = 4;
     game.current_player = TTT_CELL_X;
-    game.winner         = TTT_CELL_EMPTY;
-    game.moves          = 0;
-    game.win_line       = -1;
-    for (int i = 0; i < 9; i++) game.board[i] = TTT_CELL_EMPTY;
+    game.winner = TTT_CELL_EMPTY;
+    game.moves = 0;
+    game.win_line = -1;
+    for (int i = 0; i < 9; i++)
+        game.board[i] = TTT_CELL_EMPTY;
 
     ttt_task_id = scheduler_current_task_id();
     ttt_joy_head = 0;
     ttt_joy_tail = 0;
     ttt_led_enabled = 0;
+    ttt_hdmi_enabled = 0;
 
     if (led_acquire(ttt_task_id) == 0)
     {
         ttt_led_enabled = 1;
     }
 
-    uart_flush_rx();
-    joystick_set_event_handler(ttt_joystick_event_handler);
-    uart_set_rx_task(shell_find_task_by_name("tictactoe"));
+    if (hdmi_acquire(ttt_task_id) == 0)
+    {
+        ttt_hdmi_enabled = 1;
+    }
+
+    if (!ttt_led_enabled && !ttt_hdmi_enabled)
+    {
+        console_puts("tictactoe: no display available\n");
+        ttt_task_id = -1;
+        return;
+    }
+
+    if (joystick_set_event_handler(ttt_joystick_event_handler) < 0)
+    {
+        console_puts("tictactoe: joystick not available\n");
+
+        if (ttt_led_enabled)
+        {
+            led_release(ttt_task_id);
+        }
+
+        if (ttt_hdmi_enabled)
+        {
+            hdmi_clear_console();
+            hdmi_release(ttt_task_id);
+        }
+
+        ttt_led_enabled = 0;
+        ttt_hdmi_enabled = 0;
+        ttt_task_id = -1;
+        return;
+    }
 
     while (running)
     {
-        char c;
         joy_event_t joy;
         int clear_hdmi = 0;
         int cursor_blink = ttt_cursor_visible();
@@ -1222,7 +1018,7 @@ void tictactoe_task(void)
         if (game.state != last_state)
         {
             clear_hdmi = 1;
-            hdmi_dirty = 1;
+            display_dirty = 1;
             last_state = game.state;
         }
 
@@ -1230,26 +1026,19 @@ void tictactoe_task(void)
         {
             if (cpu_phase != last_cpu_phase)
             {
-                hdmi_dirty = 1;
+                display_dirty = 1;
                 last_cpu_phase = cpu_phase;
             }
 
-            if (uart_dirty)
+            if (display_dirty)
             {
-                ttt_render_uart(&game);
-                uart_dirty = 0;
-            }
-
-            if (hdmi_dirty)
-            {
-                ttt_render_hdmi(&game, clear_hdmi);
-                hdmi_dirty = 0;
+                ttt_render_outputs(&game, clear_hdmi);
+                display_dirty = 0;
             }
 
             task_sleep(20);
             ttt_run_cpu_turn(&game);
-            uart_dirty = 1;
-            hdmi_dirty = 1;
+            display_dirty = 1;
             continue;
         }
 
@@ -1257,59 +1046,52 @@ void tictactoe_task(void)
 
         if (cursor_blink != last_cursor_blink && game.state == TTT_STATE_PLAYING)
         {
-            hdmi_dirty = 1;
+            display_dirty = 1;
             last_cursor_blink = cursor_blink;
         }
 
-        if (uart_dirty)
+        if (display_dirty)
         {
-            ttt_render_uart(&game);
-            uart_dirty = 0;
+            ttt_render_outputs(&game, clear_hdmi);
+            display_dirty = 0;
         }
 
-        if (hdmi_dirty)
+        joy = ttt_joystick_read_event();
+        if (joy != JOY_EVENT_NONE)
         {
-            ttt_render_hdmi(&game, clear_hdmi);
-            hdmi_dirty = 0;
-        }
-
-        if (!uart_try_read_char(&c))
-        {
-            joy = ttt_joystick_read_event();
-            if (joy != JOY_EVENT_NONE)
+            if (game.state == TTT_STATE_MENU)
             {
-                if      (game.state == TTT_STATE_MENU)    running = ttt_handle_menu_joy(&game, joy);
-                else if (game.state == TTT_STATE_RESULT)  running = ttt_handle_result_joy(&game, joy);
-                else                                       ttt_handle_play_joy(&game, joy);
-
-                uart_dirty = 1;
-                hdmi_dirty = 1;
-                continue;
+                running = ttt_handle_menu_joy(&game, joy);
+            }
+            else if (game.state == TTT_STATE_RESULT)
+            {
+                running = ttt_handle_result_joy(&game, joy);
+            }
+            else
+            {
+                ttt_handle_play_joy(&game, joy);
             }
 
-            task_sleep(1);
+            display_dirty = 1;
             continue;
         }
 
-        if      (game.state == TTT_STATE_MENU)    running = ttt_handle_menu_input(&game, c);
-        else if (game.state == TTT_STATE_RESULT)  running = ttt_handle_result_input(&game, c);
-        else                                       ttt_handle_play_input(&game, c);
-
-        uart_dirty = 1;
-        hdmi_dirty = 1;
+        task_sleep(1);
     }
 
-    u(ANSI_RESET "\x1b[2J\x1b[H");
     joystick_clear_event_handler();
+    if (ttt_hdmi_enabled)
+    {
+        hdmi_clear_console();
+        hdmi_release(ttt_task_id);
+    }
+
     if (ttt_led_enabled)
     {
         led_release(ttt_task_id);
     }
-    ttt_led_enabled = 0;
-    ttt_task_id = -1;
-    if (shell_id >= 0) uart_set_rx_task(shell_id);
-    else               uart_set_rx_task(previous_rx_task);
 
-    hdmi_clear_console();
-    uart_puts("Back in shell.\n> ");
+    ttt_led_enabled = 0;
+    ttt_hdmi_enabled = 0;
+    ttt_task_id = -1;
 }

@@ -85,36 +85,6 @@ typedef struct
 static i2c_transfer_t i2c_transfer;
 
 /*
- * Print a decoded view of the BSC status register for debugging.
- *
- * This is useful to diagnose I2C errors (clock stretch timeout, NACK, etc.)
- * and observe FIFO / transfer state transitions.
- */
-static void i2c_debug_status(const char *where, uint32_t status)
-{
-    uart_puts("i2c ");
-    uart_puts(where);
-    uart_puts(" status=");
-    uart_put_uint(status);
-    uart_puts(" [");
-
-    if (status & BSC_S_CLKT)
-        uart_puts("CLKT ");
-    if (status & BSC_S_ERR)
-        uart_puts("ERR ");
-    if (status & BSC_S_RXD)
-        uart_puts("RXD ");
-    if (status & BSC_S_TXD)
-        uart_puts("TXD ");
-    if (status & BSC_S_DONE)
-        uart_puts("DONE ");
-    if (status & BSC_S_TA)
-        uart_puts("TA ");
-
-    uart_puts("]\n");
-}
-
-/*
  * Stop the controller, clear all status flags and flush the FIFO.
  *
  * This puts the hardware into a clean baseline state before starting

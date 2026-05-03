@@ -89,27 +89,8 @@ static uint32_t status_dot_y = 0;
 static uint32_t text_fg = CONSOLE_FG;
 static uint32_t text_bg = CONSOLE_PANEL;
 
-static int mailbox_call(uint8_t channel);
-static char hdmi_normalize_char(char c);
-static const uint8_t *hdmi_lookup_glyph(char c);
-static void hdmi_draw_pixel(uint32_t x, uint32_t y, uint32_t color);
-static void hdmi_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color);
-static void hdmi_fill_rect_blend(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-                                 uint32_t color_a, uint32_t color_b, int vertical);
-static void hdmi_draw_frame(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-                            uint32_t border, uint32_t fill);
-static void hdmi_draw_corner_glow(uint32_t cx, uint32_t cy, uint32_t radius, uint32_t color);
-static void hdmi_draw_progress_bar(uint32_t x, uint32_t y, uint32_t width, uint32_t progress);
-static void hdmi_draw_bootscreen_static(void);
-static void hdmi_update_boot_progress(uint32_t progress);
-static void hdmi_draw_console_chrome(void);
-static void hdmi_scroll(void);
-static void hdmi_newline(void);
-static void hdmi_draw_char_at(uint32_t px, uint32_t py, char c, uint32_t fg, uint32_t bg);
-static void hdmi_draw_string_at(uint32_t px, uint32_t py, const char *s, uint32_t fg, uint32_t bg);
-static uint32_t hdmi_string_width(const char *s);
-static void hdmi_draw_status_dot(uint32_t phase);
-static void hdmi_draw_cursor(uint32_t visible);
+static int hdmi_owner_task_id = -1;
+static int hdmi_ready = 0;
 
 /*
  * Normalize characters for the small bitmap font.
@@ -670,8 +651,64 @@ int hdmi_init(void)
     framebuffer_height = mailbox[11];
     framebuffer_pitch = mailbox[33];
 
+    hdmi_ready = 1;
+
     hdmi_draw_console_chrome();
     return 1;
+}
+
+int hdmi_is_available(void)
+{
+    return hdmi_ready && framebuffer != 0;
+}
+
+int hdmi_acquire(int task_id)
+{
+    int result = -1;
+
+    if (task_id < 0 || !hdmi_is_available())
+    {
+        return -1;
+    }
+
+    irq_disable();
+
+    if (hdmi_owner_task_id < 0 || hdmi_owner_task_id == task_id)
+    {
+        hdmi_owner_task_id = task_id;
+        result = 0;
+    }
+
+    irq_enable();
+    return result;
+}
+
+void hdmi_release(int task_id)
+{
+    if (task_id < 0)
+    {
+        return;
+    }
+
+    irq_disable();
+
+    if (hdmi_owner_task_id == task_id)
+    {
+        hdmi_owner_task_id = -1;
+    }
+
+    irq_enable();
+}
+
+int hdmi_is_owned_by(int task_id)
+{
+    int result;
+
+    irq_disable();
+    result = (task_id >= 0 && hdmi_owner_task_id == task_id);
+    irq_enable();
+
+    return result;
 }
 
 void hdmi_set_text_colors(uint32_t fg, uint32_t bg)
