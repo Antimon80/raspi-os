@@ -8,6 +8,7 @@ void led_register_task_id(int id);
 int led_get_task_id(void);
 int led_submit_frame(int task_id, const led_frame_t *frame);
 int led_submit_clear_frame(int task_id);
+void led_frame_clear(led_frame_t *frame);
 int led_acquire(int task_id);
 void led_release(int task_id);
 

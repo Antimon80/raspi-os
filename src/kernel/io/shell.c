@@ -9,6 +9,7 @@
 #include "kernel/tasks/gol_task.h"
 #include "kernel/tasks/led_task.h"
 #include "kernel/tasks/env_task.h"
+#include "kernel/tasks/env_status_task.h"
 #include "kernel/debug/trace.h"
 #include "sensehat/led_matrix.h"
 #include "rpi4/uart.h"
@@ -18,7 +19,7 @@
 #include <stdint.h>
 
 #define SHELL_BUFFER_SIZE 64
-#define ENV_HISTORY_DUMP_MAX 64
+#define ENV_HISTORY_DUMP_MAX 10
 
 typedef struct
 {
@@ -36,7 +37,8 @@ static const startable_task_t startable_tasks[] = {
     {"burst", burst_task},
     {"tictactoe", tictactoe_task},
     {"gol", gol_task},
-    {"env", env_task}};
+    {"env", env_task},
+    {"envled", env_status_task}};
 
 /*
  * Print a textual representation of a task state.
@@ -266,6 +268,11 @@ void shell_cmd_start_arg(const char *name)
         gol_register_task_id(id);
     }
 
+    if (str_equals(name, "envled"))
+    {
+        env_status_register_task_id(id);
+    }
+
     console_puts("task started with id ");
     console_put_uint((unsigned int)id);
     console_puts("\n");
@@ -301,6 +308,12 @@ void shell_cmd_stop_id(int id)
     {
         led_release(id);
         gol_register_task_id(-1);
+    }
+
+    if (id == env_status_get_task_id())
+    {
+        led_release(id);
+        env_status_register_task_id(-1);
     }
 
     console_puts("stop requested for task ");

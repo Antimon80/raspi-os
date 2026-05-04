@@ -20,6 +20,7 @@ typedef struct
     env_sample_t history[ENV_HISTORY_SIZE];
     unsigned int write_index;
     unsigned int count;
+    uint64_t last_history_tick;
 } env_store_t;
 
 static env_store_t env_store;
@@ -36,6 +37,7 @@ void env_init(void)
     env_store.write_index = 0;
     env_store.count = 0;
     env_store.latest.valid = 0;
+    env_store.last_history_tick = 0;
 
     irq_enable();
 }
@@ -59,12 +61,17 @@ void env_push(const env_sample_t *sample)
     env_store.latest = *sample;
     env_store.latest.valid = 1;
 
-    env_store.history[env_store.write_index] = env_store.latest;
-    env_store.write_index = (env_store.write_index + 1) % ENV_HISTORY_SIZE;
-
-    if (env_store.count < ENV_HISTORY_SIZE)
+    if (env_store.count == 0 || sample->tick - env_store.last_history_tick >= ENV_HISTORY_INTERVAL_TICKS)
     {
-        env_store.count++;
+        env_store.history[env_store.write_index] = env_store.latest;
+        env_store.write_index = (env_store.write_index + 1) % ENV_HISTORY_SIZE;
+
+        if (env_store.count < ENV_HISTORY_SIZE)
+        {
+            env_store.count++;
+        }
+
+        env_store.last_history_tick = sample->tick;
     }
 
     irq_enable();
@@ -203,27 +210,27 @@ void env_task(void)
         if (pressure_ok < 0)
         {
             log_append_current_task("env: pressure read failed", 0);
-            task_sleep(100);
+            task_sleep(ENV_SAMPLE_INTERVAL_TICKS);
             continue;
         }
 
         if (humidity_ok < 0)
         {
             log_append_current_task("env: humidity read failed", 0);
-            task_sleep(100);
+            task_sleep(ENV_SAMPLE_INTERVAL_TICKS);
             continue;
         }
 
         if (temperature_ok < 0)
         {
             log_append_current_task("env: temperature read failed", 0);
-            task_sleep(100);
+            task_sleep(ENV_SAMPLE_INTERVAL_TICKS);
             continue;
         }
 
         sample.valid = 1;
         env_push(&sample);
 
-        task_sleep(100);
+        task_sleep(ENV_SAMPLE_INTERVAL_TICKS);
     }
 }

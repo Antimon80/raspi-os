@@ -73,26 +73,29 @@ int led_submit_frame(int task_id, const led_frame_t *frame)
     return 0;
 }
 
-/*
- * Submit a frame that clears the display.
- *
- * This builds a black frame and forwards it to led_submit_frame().
- * Used for example when stopping a demo task.
- *
- * Returns 0 on success and -1 on failure.
- */
-int led_submit_clear_frame(int task_id)
+void led_frame_clear(led_frame_t *frame)
 {
-    led_frame_t frame;
     led_matrix_color_t black = {0, 0, 0};
+
+    if (!frame)
+    {
+        return;
+    }
 
     for (int y = 0; y < MATRIX_HEIGHT; y++)
     {
         for (int x = 0; x < MATRIX_WIDTH; x++)
         {
-            frame.pixels[y][x] = black;
+            frame->pixels[y][x] = black;
         }
     }
+}
+
+int led_submit_clear_frame(int task_id)
+{
+    led_frame_t frame;
+
+    led_frame_clear(&frame);
 
     return led_submit_frame(task_id, &frame);
 }

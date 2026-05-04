@@ -37,6 +37,8 @@ static const char *menu_entries[] =
         "ps",
         "start env",
         "stop env",
+        "start envled",
+        "stop envled",
         "start tictactoe",
         "stop tictactoe",
         "start heart",
@@ -67,6 +69,77 @@ static void joy_menu_execute_selected(void)
 }
 
 /*
+ * Move the terminal cursor up by the given number of rows.
+ */
+static void joy_menu_cursor_up(unsigned int rows)
+{
+    if (rows == 0)
+    {
+        return;
+    }
+
+    console_puts("\x1b[");
+    console_put_uint(rows);
+    console_puts("A");
+}
+
+/*
+ * Move the terminal cursor down by the given number of rows.
+ */
+static void joy_menu_cursor_down(unsigned int rows)
+{
+    if (rows == 0)
+    {
+        return;
+    }
+
+    console_puts("\x1b[");
+    console_put_uint(rows);
+    console_puts("B");
+}
+
+/*
+ * Move the terminal cursor to the start of the current line.
+ */
+static void joy_menu_cursor_line_start(void)
+{
+    console_puts("\r");
+}
+
+/*
+ * Clear the current terminal line.
+ */
+static void joy_menu_clear_line(void)
+{
+    console_puts("\x1b[2K");
+}
+
+/*
+ * Render one menu line with or without the selection marker.
+ */
+static void joy_menu_render_item(int index, int selected)
+{
+    if (index < 0 || index >= JOY_MENU_ITEMS)
+    {
+        return;
+    }
+
+    joy_menu_cursor_line_start();
+    joy_menu_clear_line();
+
+    if (selected)
+    {
+        console_puts("> ");
+    }
+    else
+    {
+        console_puts("  ");
+    }
+
+    console_puts(menu_entries[index]);
+}
+
+/*
  * Render the joystick menu to the UART console.
  *
  * The currently selected entry is highlighted with a '>' marker.
@@ -89,6 +162,71 @@ static void joy_menu_render(void)
         console_puts(menu_entries[i]);
         console_puts("\n");
     }
+}
+
+/*
+ * Update only the old and the new selected menu line.
+ *
+ * This assumes that no other task has written to the console between the last
+ * menu render/update and this update. If other output appears, call
+ * joy_menu_render() again to resynchronize the display.
+ */
+static void joy_menu_update_selection(int old_selected, int new_selected)
+{
+    int current_line_from_menu_end;
+    int old_line_from_menu_end;
+    int new_line_from_menu_end;
+
+    if (old_selected == new_selected)
+    {
+        return;
+    }
+
+    old_line_from_menu_end = JOY_MENU_ITEMS - old_selected;
+    new_line_from_menu_end = JOY_MENU_ITEMS - new_selected;
+
+    joy_menu_cursor_up((unsigned int)old_line_from_menu_end);
+    joy_menu_render_item(old_selected, 0);
+
+    current_line_from_menu_end = old_line_from_menu_end;
+
+    if (new_line_from_menu_end > current_line_from_menu_end)
+    {
+        joy_menu_cursor_up((unsigned int)(new_line_from_menu_end - current_line_from_menu_end));
+    }
+    else if (new_line_from_menu_end < current_line_from_menu_end)
+    {
+        joy_menu_cursor_down((unsigned int)(current_line_from_menu_end - new_line_from_menu_end));
+    }
+
+    joy_menu_render_item(new_selected, 1);
+
+    joy_menu_cursor_down((unsigned int)new_line_from_menu_end);
+    joy_menu_cursor_line_start();
+}
+
+static void joy_menu_move_selection(int delta)
+{
+    int old_selected = menu_state.selected;
+    int new_selected = menu_state.selected + delta;
+
+    if (new_selected < 0)
+    {
+        new_selected = 0;
+    }
+
+    if (new_selected >= JOY_MENU_ITEMS)
+    {
+        new_selected = JOY_MENU_ITEMS - 1;
+    }
+
+    if (new_selected == old_selected)
+    {
+        return;
+    }
+
+    menu_state.selected = new_selected;
+    joy_menu_update_selection(old_selected, new_selected);
 }
 
 /*
@@ -173,22 +311,14 @@ void joy_menu_handle_event(joy_event_t event)
     case JOY_EVENT_UP:
         if (menu_state.active)
         {
-            if (menu_state.selected > 0)
-            {
-                menu_state.selected--;
-            }
-            joy_menu_render();
+            joy_menu_move_selection(-1);
         }
         break;
 
     case JOY_EVENT_DOWN:
         if (menu_state.active)
         {
-            if (menu_state.selected < (JOY_MENU_ITEMS - 1))
-            {
-                menu_state.selected++;
-            }
-            joy_menu_render();
+            joy_menu_move_selection(1);
         }
         break;
 

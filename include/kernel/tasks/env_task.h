@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define ENV_SAMPLE_INTERVAL_TICKS 100
+#define ENV_HISTORY_INTERVAL_TICKS 3000
+
 #define ENV_HISTORY_SIZE 64
 
 typedef struct{
