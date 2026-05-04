@@ -14,7 +14,6 @@ void hdmi_clear_console(void);
 void hdmi_wait_ms(uint32_t ms);
 int hdmi_acquire(int task_id);
 void hdmi_release(int task_id);
-int hdmi_is_owned_by(int task_id);
 int hdmi_is_available(void);
 
 #endif

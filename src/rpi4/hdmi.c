@@ -700,17 +700,6 @@ void hdmi_release(int task_id)
     irq_enable();
 }
 
-int hdmi_is_owned_by(int task_id)
-{
-    int result;
-
-    irq_disable();
-    result = (task_id >= 0 && hdmi_owner_task_id == task_id);
-    irq_enable();
-
-    return result;
-}
-
 void hdmi_set_text_colors(uint32_t fg, uint32_t bg)
 {
     text_fg = fg;

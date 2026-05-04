@@ -2,6 +2,7 @@
 #include "kernel/tasks/joystick_task.h"
 #include "kernel/tasks/led_task.h"
 #include "kernel/io/console.h"
+#include "kernel/io/hdmi_console.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/irq.h"
 #include "kernel/timer.h"
@@ -978,6 +979,8 @@ void tictactoe_task(void)
     if (hdmi_acquire(ttt_task_id) == 0)
     {
         ttt_hdmi_enabled = 1;
+        hdmi_console_enable(0);
+        hdmi_clear_console();
     }
 
     if (!ttt_led_enabled && !ttt_hdmi_enabled)
@@ -1000,6 +1003,7 @@ void tictactoe_task(void)
         {
             hdmi_clear_console();
             hdmi_release(ttt_task_id);
+            hdmi_console_enable(1);
         }
 
         ttt_led_enabled = 0;
@@ -1084,6 +1088,7 @@ void tictactoe_task(void)
     {
         hdmi_clear_console();
         hdmi_release(ttt_task_id);
+        hdmi_console_enable(1);
     }
 
     if (ttt_led_enabled)

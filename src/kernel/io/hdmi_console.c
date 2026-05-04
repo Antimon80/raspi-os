@@ -7,15 +7,49 @@
 #define HDMI_CONSOLE_BUFFER_SIZE 4096
 #define HDMI_CHARS_PER_SLICE 64
 
+/*
+ * Software queue for asynchronous HDMI console mirroring.
+ *
+ * UART output is written immediately by console.c. HDMI output is queued here
+ * and consumed by hdmi_console_task(), so large shell outputs cannot directly
+ * block the calling task in the slow framebuffer renderer.
+ */
 static char hdmi_buffer[HDMI_CONSOLE_BUFFER_SIZE];
 
+/*
+ * Ring-buffer indices and current fill level.
+ *
+ * Access is protected by disabling IRQs because producers may enqueue from
+ * normal task context while the HDMI console task concurrently dequeues.
+ */
 static unsigned int hdmi_head = 0;
 static unsigned int hdmi_tail = 0;
 static unsigned int hdmi_count = 0;
 
+/*
+ * Task ID of the dedicated HDMI console renderer.
+ *
+ * The task is woken whenever new characters are queued or mirroring is
+ * enabled. A value below zero means the renderer task has not been registered.
+ */
 static int hdmi_console_task_id = -1;
+
+/*
+ * Global HDMI console mirror switch.
+ *
+ * When disabled, console output still goes to UART, but characters are not
+ * queued for HDMI. This is used when an application owns HDMI directly, for
+ * example Tic-Tac-Toe.
+ */
 static int hdmi_console_enabled = 0;
 
+/*
+ * Remove one character from the HDMI console queue.
+ *
+ * IRQs must already be disabled by the caller. This function intentionally
+ * does not perform locking itself so the renderer can dequeue multiple
+ * characters in one protected section.
+ */
 static int hdmi_console_dequeue_irq_disabled(char *out){
     if(!out || hdmi_count == 0){
         return -1;
@@ -28,6 +62,13 @@ static int hdmi_console_dequeue_irq_disabled(char *out){
     return 0;
 }
 
+/*
+ * Wake the HDMI console renderer if it is currently blocked.
+ *
+ * IRQs must already be disabled by the caller. This avoids using task_wakeup()
+ * from an already IRQ-disabled section and prevents accidentally re-enabling
+ * IRQs inside such a critical section.
+ */
 static void hdmi_console_wake_task_irq_disabled(void){
     task_t *task;
 
@@ -41,6 +82,13 @@ static void hdmi_console_wake_task_irq_disabled(void){
     }
 }
 
+/*
+ * Initialize the HDMI console mirror state.
+ *
+ * Called during console initialization before the renderer task is expected
+ * to run. The mirror starts disabled; enabling is done explicitly after HDMI
+ * setup and task registration.
+ */
 void hdmi_console_init(void){
     irq_disable();
 
@@ -53,12 +101,21 @@ void hdmi_console_init(void){
     irq_enable();
 }
 
+/*
+ * Register the task ID of the dedicated HDMI console renderer task.
+ */
 void hdmi_console_register_task_id(int id){
     irq_disable();
     hdmi_console_task_id = id;
     irq_enable();
 }
 
+/*
+ * Enable or disable HDMI console mirroring.
+ *
+ * Disabling does not affect UART output and does not clear queued characters.
+ * Enabling wakes the renderer so already queued output can be processed.
+ */
 void hdmi_console_enable(int enabled){
     irq_disable();
     hdmi_console_enabled = enabled ? 1 : 0;
@@ -70,6 +127,9 @@ void hdmi_console_enable(int enabled){
     irq_enable();
 }
 
+/*
+ * Return non-zero if HDMI console mirroring is currently enabled.
+ */
 int hdmi_console_is_enabled(void){
     int enabled;
 
