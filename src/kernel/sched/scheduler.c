@@ -278,7 +278,7 @@ void scheduler_yield(void)
     next->state = RUNNING;
     current_task_id = next_id;
 
-    trace_record(TRACE_CTX_SWITCH, prev_id, next_id, 0);
+    trace_record_irq_disabled(TRACE_CTX_SWITCH, prev_id, next_id, 0);
 
     if (prev_id >= 0)
     {

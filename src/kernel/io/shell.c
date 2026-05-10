@@ -638,7 +638,7 @@ void shell_task(void)
                 console_puts("\b \b");
             }
         }
-        else
+        else if (c >= ' ' && c <= '~')
         {
             if (len < (SHELL_BUFFER_SIZE - 1))
             {

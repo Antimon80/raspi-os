@@ -126,6 +126,14 @@ static unsigned int uart_data_ready(void)
     return mmio_read(AUX_MU_LSR_REG) & AUX_MU_LSR_RX_READY;
 }
 
+static void uart_drain_rx_hardware(void)
+{
+    while (uart_data_ready())
+    {
+        (void)mmio_read(AUX_MU_IO_REG);
+    }
+}
+
 /*
  * Enable UART TX interrupts.
  *
@@ -294,10 +302,12 @@ void uart_init(void)
     mmio_write(AUX_MU_BAUD_REG, AUX_MU_BAUD(115200)); // set baud rate
 
     // configure GPIO pins for UART
-    gpio_use_as_alt5(14); // TX
-    gpio_use_as_alt5(15); // RX
+    gpio_use_as_alt5(14);          // TX
+    gpio_use_as_alt5(15);          // RX
+    gpio_set_pull(15, GPIO_PULL_UP); // keep RX idle-high if no adapter drives it
 
     mmio_write(AUX_MU_CNTL_REG, 3);                   // enable transmitter and receiver
+    uart_drain_rx_hardware();
     mmio_write(AUX_MU_IER_REG, AUX_MU_IER_RX_ENABLE); // enable RX interrupt (bit 0)
 }
 

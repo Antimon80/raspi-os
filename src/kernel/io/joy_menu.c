@@ -160,7 +160,10 @@ static void joy_menu_render(void)
         }
 
         console_puts(menu_entries[i]);
-        console_puts("\n");
+        if (i < (JOY_MENU_ITEMS - 1))
+        {
+            console_puts("\n");
+        }
     }
 }
 
@@ -182,8 +185,8 @@ static void joy_menu_update_selection(int old_selected, int new_selected)
         return;
     }
 
-    old_line_from_menu_end = JOY_MENU_ITEMS - old_selected;
-    new_line_from_menu_end = JOY_MENU_ITEMS - new_selected;
+    old_line_from_menu_end = (JOY_MENU_ITEMS - 1) - old_selected;
+    new_line_from_menu_end = (JOY_MENU_ITEMS - 1) - new_selected;
 
     joy_menu_cursor_up((unsigned int)old_line_from_menu_end);
     joy_menu_render_item(old_selected, 0);

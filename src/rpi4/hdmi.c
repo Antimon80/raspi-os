@@ -88,6 +88,9 @@ static uint32_t status_dot_x = 0;
 static uint32_t status_dot_y = 0;
 static uint32_t text_fg = CONSOLE_FG;
 static uint32_t text_bg = CONSOLE_PANEL;
+static int ansi_state = 0;
+static uint32_t ansi_value = 0;
+static int ansi_has_value = 0;
 
 static int hdmi_owner_task_id = -1;
 static int hdmi_ready = 0;
@@ -151,12 +154,47 @@ static void hdmi_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t heig
 {
     uint32_t yy;
     uint32_t xx;
+    uint32_t max_x;
+    uint32_t max_y;
+    uint32_t clipped_width;
+    uint32_t clipped_height;
+    volatile uint32_t *row;
 
-    for (yy = 0; yy < height; yy++)
+    if (!framebuffer || width == 0u || height == 0u)
     {
-        for (xx = 0; xx < width; xx++)
+        return;
+    }
+
+    if (x >= framebuffer_width || y >= framebuffer_height)
+    {
+        return;
+    }
+
+    max_x = x + width;
+    max_y = y + height;
+
+    if (max_x < x || max_x > framebuffer_width)
+    {
+        max_x = framebuffer_width;
+    }
+
+    if (max_y < y || max_y > framebuffer_height)
+    {
+        max_y = framebuffer_height;
+    }
+
+    clipped_width = max_x - x;
+    clipped_height = max_y - y;
+
+    for (yy = 0; yy < clipped_height; yy++)
+    {
+        row = (volatile uint32_t *)((volatile uint8_t *)framebuffer +
+                                    ((y + yy) * framebuffer_pitch) +
+                                    (x * sizeof(uint32_t)));
+
+        for (xx = 0; xx < clipped_width; xx++)
         {
-            hdmi_draw_pixel(x + xx, y + yy, color);
+            row[xx] = color;
         }
     }
 }
@@ -170,7 +208,29 @@ static void hdmi_fill_rect_blend(uint32_t x, uint32_t y, uint32_t width, uint32_
 {
     uint32_t yy;
     uint32_t xx;
+    uint32_t max_x;
+    uint32_t max_y;
+    uint32_t clipped_width;
+    uint32_t clipped_height;
     uint32_t steps = vertical ? height : width;
+    uint32_t r1;
+    uint32_t g1;
+    uint32_t b1;
+    uint32_t r2;
+    uint32_t g2;
+    uint32_t b2;
+    uint32_t divisor;
+    volatile uint32_t *row;
+
+    if (!framebuffer || width == 0u || height == 0u)
+    {
+        return;
+    }
+
+    if (x >= framebuffer_width || y >= framebuffer_height)
+    {
+        return;
+    }
 
     if (steps <= 1u)
     {
@@ -178,23 +238,43 @@ static void hdmi_fill_rect_blend(uint32_t x, uint32_t y, uint32_t width, uint32_
         return;
     }
 
-    for (yy = 0; yy < height; yy++)
+    max_x = x + width;
+    max_y = y + height;
+
+    if (max_x < x || max_x > framebuffer_width)
     {
-        for (xx = 0; xx < width; xx++)
+        max_x = framebuffer_width;
+    }
+
+    if (max_y < y || max_y > framebuffer_height)
+    {
+        max_y = framebuffer_height;
+    }
+
+    clipped_width = max_x - x;
+    clipped_height = max_y - y;
+    r1 = (color_a >> 16) & 0xFFu;
+    g1 = (color_a >> 8) & 0xFFu;
+    b1 = color_a & 0xFFu;
+    r2 = (color_b >> 16) & 0xFFu;
+    g2 = (color_b >> 8) & 0xFFu;
+    b2 = color_b & 0xFFu;
+    divisor = steps - 1u;
+
+    for (yy = 0; yy < clipped_height; yy++)
+    {
+        row = (volatile uint32_t *)((volatile uint8_t *)framebuffer +
+                                    ((y + yy) * framebuffer_pitch) +
+                                    (x * sizeof(uint32_t)));
+
+        for (xx = 0; xx < clipped_width; xx++)
         {
             uint32_t t = vertical ? yy : xx;
-            uint32_t r1 = (color_a >> 16) & 0xFFu;
-            uint32_t g1 = (color_a >> 8) & 0xFFu;
-            uint32_t b1 = color_a & 0xFFu;
-            uint32_t r2 = (color_b >> 16) & 0xFFu;
-            uint32_t g2 = (color_b >> 8) & 0xFFu;
-            uint32_t b2 = color_b & 0xFFu;
-            uint32_t divisor = steps - 1u;
             uint32_t r = ((r1 * (divisor - t)) + (r2 * t)) / divisor;
             uint32_t g = ((g1 * (divisor - t)) + (g2 * t)) / divisor;
             uint32_t b = ((b1 * (divisor - t)) + (b2 * t)) / divisor;
 
-            hdmi_draw_pixel(x + xx, y + yy, (r << 16) | (g << 8) | b);
+            row[xx] = (r << 16) | (g << 8) | b;
         }
     }
 }
@@ -212,6 +292,45 @@ static void hdmi_draw_frame(uint32_t x, uint32_t y, uint32_t width, uint32_t hei
 
     hdmi_fill_rect(x, y, width, height, border);
     hdmi_fill_rect(x + 1u, y + 1u, width - 2u, height - 2u, fill);
+}
+
+static void hdmi_fill_circle(uint32_t cx, uint32_t cy, uint32_t radius, uint32_t color)
+{
+    int32_t r = (int32_t)radius;
+    int32_t rr = r * r;
+
+    for (int32_t y = -r; y <= r; y++)
+    {
+        for (int32_t x = -r; x <= r; x++)
+        {
+            if ((x * x) + (y * y) <= rr)
+            {
+                hdmi_draw_pixel((uint32_t)((int32_t)cx + x), (uint32_t)((int32_t)cy + y), color);
+            }
+        }
+    }
+}
+
+static void hdmi_draw_circle_ring(uint32_t cx, uint32_t cy, uint32_t outer_radius,
+                                  uint32_t inner_radius, uint32_t color)
+{
+    int32_t outer = (int32_t)outer_radius;
+    int32_t inner = (int32_t)inner_radius;
+    int32_t outer_rr = outer * outer;
+    int32_t inner_rr = inner * inner;
+
+    for (int32_t y = -outer; y <= outer; y++)
+    {
+        for (int32_t x = -outer; x <= outer; x++)
+        {
+            int32_t dist = (x * x) + (y * y);
+
+            if (dist <= outer_rr && dist >= inner_rr)
+            {
+                hdmi_draw_pixel((uint32_t)((int32_t)cx + x), (uint32_t)((int32_t)cy + y), color);
+            }
+        }
+    }
 }
 
 /*
@@ -386,6 +505,28 @@ static void hdmi_draw_progress_bar(uint32_t x, uint32_t y, uint32_t width, uint3
     }
 }
 
+static void hdmi_draw_boot_badge(uint32_t x, uint32_t y)
+{
+    uint32_t cx = x + 78u;
+    uint32_t cy = y + 78u;
+
+    hdmi_fill_circle(cx, cy, 78u, 0x00111D2Au);
+    hdmi_draw_circle_ring(cx, cy, 78u, 73u, 0x0028C7FAu);
+    hdmi_draw_circle_ring(cx, cy, 63u, 60u, 0x001B7FE0u);
+
+    hdmi_fill_rect(cx - 38u, cy - 40u, 76u, 80u, 0x001B2633u);
+    hdmi_fill_rect(cx - 31u, cy - 31u, 62u, 62u, 0x000E1623u);
+    hdmi_fill_rect(cx - 44u, cy - 22u, 12u, 44u, 0x0028C7FAu);
+    hdmi_fill_rect(cx + 32u, cy - 22u, 12u, 44u, 0x0028C7FAu);
+    hdmi_fill_rect(cx - 22u, cy - 46u, 44u, 12u, 0x0041E4FFu);
+    hdmi_fill_rect(cx - 22u, cy + 34u, 44u, 12u, 0x0041E4FFu);
+
+    hdmi_fill_rect(cx - 18u, cy - 18u, 36u, 36u, 0x0028C7FAu);
+    hdmi_fill_rect(cx - 11u, cy - 11u, 22u, 22u, 0x0098F4FFu);
+    hdmi_fill_rect(cx - 3u, cy - 50u, 6u, 100u, 0x00111D2Au);
+    hdmi_fill_rect(cx - 50u, cy - 3u, 100u, 6u, 0x00111D2Au);
+}
+
 /*
  * Draw the static part of the bootscreen.
  * The progress bar is updated separately during the short boot animation.
@@ -412,11 +553,7 @@ static void hdmi_draw_bootscreen_static(void)
     hdmi_fill_rect(card_x + 26u, card_y + 24u, 108u, 18u, 0x00111C2A);
     hdmi_draw_string_at(card_x + 32u, card_y + 20u, eyebrow, BOOT_MUTED, BOOT_CARD);
 
-    hdmi_fill_rect(logo_x, logo_y, 156u, 156u, BOOT_ACCENT);
-    hdmi_fill_rect(logo_x + 10u, logo_y + 10u, 136u, 136u, BOOT_CARD);
-    hdmi_fill_rect(logo_x + 50u, logo_y + 24u, 56u, 56u, BOOT_ACCENT);
-    hdmi_fill_rect(logo_x + 70u, logo_y + 82u, 16u, 48u, BOOT_ACCENT);
-    hdmi_fill_rect(logo_x + 116u, logo_y + 38u, 12u, 78u, 0x0041E4FFu);
+    hdmi_draw_boot_badge(logo_x, logo_y);
 
     hdmi_draw_string_at((framebuffer_width - hdmi_string_width(title)) / 2u, card_y + 206u, title, CONSOLE_FG, BOOT_CARD);
     hdmi_draw_string_at((framebuffer_width - hdmi_string_width(subtitle)) / 2u, card_y + 236u, subtitle, BOOT_MUTED, BOOT_CARD);
@@ -483,8 +620,9 @@ static void hdmi_scroll(void)
     uint32_t y;
     uint32_t x;
     uint32_t pixels_per_row;
-    volatile uint32_t *dst_row;
-    volatile uint32_t *src_row;
+    uint32_t *dst_row;
+    uint32_t *src_row;
+    uint8_t *base;
 
     if (!framebuffer || console_content_height <= CHAR_ADVANCE_Y)
     {
@@ -493,15 +631,14 @@ static void hdmi_scroll(void)
 
     rows_to_move = console_content_height - CHAR_ADVANCE_Y;
     pixels_per_row = console_content_width;
+    base = (uint8_t *)framebuffer +
+           (console_origin_y * framebuffer_pitch) +
+           (console_origin_x * sizeof(uint32_t));
 
     for (y = 0; y < rows_to_move; y++)
     {
-        dst_row = (volatile uint32_t *)((volatile uint8_t *)framebuffer +
-                                        ((console_origin_y + y) * framebuffer_pitch) +
-                                        (console_origin_x * sizeof(uint32_t)));
-        src_row = (volatile uint32_t *)((volatile uint8_t *)framebuffer +
-                                        ((console_origin_y + y + CHAR_ADVANCE_Y) * framebuffer_pitch) +
-                                        (console_origin_x * sizeof(uint32_t)));
+        dst_row = (uint32_t *)(base + (y * framebuffer_pitch));
+        src_row = (uint32_t *)(base + ((y + CHAR_ADVANCE_Y) * framebuffer_pitch));
 
         for (x = 0; x < pixels_per_row; x++)
         {
@@ -509,16 +646,8 @@ static void hdmi_scroll(void)
         }
     }
 
-    for (; y < console_content_height; y++)
-    {
-        dst_row = (volatile uint32_t *)((volatile uint8_t *)framebuffer +
-                                        ((console_origin_y + y) * framebuffer_pitch) +
-                                        (console_origin_x * sizeof(uint32_t)));
-        for (x = 0; x < pixels_per_row; x++)
-        {
-            dst_row[x] = CONSOLE_PANEL;
-        }
-    }
+    hdmi_fill_rect(console_origin_x, console_origin_y + rows_to_move,
+                   console_content_width, CHAR_ADVANCE_Y, CONSOLE_PANEL);
 }
 
 /*
@@ -534,6 +663,51 @@ static void hdmi_newline(void)
         hdmi_scroll();
         cursor_y = console_rows - 1u;
     }
+}
+
+static void hdmi_clear_console_line(void)
+{
+    uint32_t py;
+
+    if (!framebuffer || cursor_y >= console_rows)
+    {
+        return;
+    }
+
+    py = console_origin_y + (cursor_y * CHAR_ADVANCE_Y);
+    hdmi_fill_rect(console_origin_x, py, console_content_width, CHAR_ADVANCE_Y, text_bg);
+}
+
+static void hdmi_handle_csi(char c)
+{
+    uint32_t count = ansi_has_value ? ansi_value : 1u;
+
+    if (count == 0u)
+    {
+        count = 1u;
+    }
+
+    if (c == 'A')
+    {
+        hdmi_set_cursor(cursor_x, count > cursor_y ? 0u : cursor_y - count);
+    }
+    else if (c == 'B')
+    {
+        uint32_t row = cursor_y + count;
+        if (row >= console_rows)
+        {
+            row = console_rows - 1u;
+        }
+        hdmi_set_cursor(cursor_x, row);
+    }
+    else if (c == 'K' && ansi_value == 2u)
+    {
+        hdmi_clear_console_line();
+    }
+
+    ansi_state = 0;
+    ansi_value = 0;
+    ansi_has_value = 0;
 }
 
 /*
@@ -751,8 +925,45 @@ void hdmi_putc(char c)
         return;
     }
 
+    if (ansi_state == 1)
+    {
+        if (c == '[')
+        {
+            ansi_state = 2;
+            ansi_value = 0;
+            ansi_has_value = 0;
+        }
+        else
+        {
+            ansi_state = 0;
+        }
+        return;
+    }
+
+    if (ansi_state == 2)
+    {
+        if (c >= '0' && c <= '9')
+        {
+            ansi_value = (ansi_value * 10u) + (uint32_t)(c - '0');
+            ansi_has_value = 1;
+            return;
+        }
+
+        hdmi_handle_csi(c);
+        return;
+    }
+
+    if (c == '\x1b')
+    {
+        ansi_state = 1;
+        return;
+    }
+
     if (c == '\r')
     {
+        hdmi_draw_cursor(0u);
+        cursor_x = 0u;
+        hdmi_draw_cursor(1u);
         return;
     }
 

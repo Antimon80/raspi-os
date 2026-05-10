@@ -18,7 +18,7 @@ static volatile unsigned int trace_tail = 0;
  * This function is designed to be lightweight and non-blocking.
  * If the buffer is full, the oldest entry is overwritten.
  */
-void trace_record(trace_event_type_t type, int from_task, int to_task, int arg)
+void trace_record_irq_disabled(trace_event_type_t type, int from_task, int to_task, int arg)
 {
     unsigned int next = (trace_head + 1U) % TRACE_BUFFER_SIZE;
 
@@ -34,6 +34,13 @@ void trace_record(trace_event_type_t type, int from_task, int to_task, int arg)
     trace_buffer[trace_head].arg = arg;
 
     trace_head = next;
+}
+
+void trace_record(trace_event_type_t type, int from_task, int to_task, int arg)
+{
+    irq_disable();
+    trace_record_irq_disabled(type, from_task, to_task, arg);
+    irq_enable();
 }
 
 /*
@@ -52,6 +59,7 @@ int trace_pop(trace_event_t *out)
 
     if (trace_head == trace_tail)
     {
+        irq_enable();
         return -1;
     }
 
@@ -67,8 +75,10 @@ int trace_pop(trace_event_t *out)
  */
 void trace_clear(void)
 {
+    irq_disable();
     trace_head = 0;
     trace_tail = 0;
+    irq_enable();
 }
 
 /*

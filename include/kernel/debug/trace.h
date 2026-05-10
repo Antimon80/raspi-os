@@ -34,6 +34,7 @@ typedef struct
 } trace_event_t;
 
 void trace_record(trace_event_type_t type, int from_task, int to_task, int arg);
+void trace_record_irq_disabled(trace_event_type_t type, int from_task, int to_task, int arg);
 int trace_pop(trace_event_t *out);
 void trace_clear(void);
 int trace_count(void);

@@ -30,7 +30,7 @@ static void timer_wake_sleeping_tasks(uint64_t now)
         if (task->state == SLEEPING && task->wakeup_tick <= now)
         {
             task->state = READY;
-            trace_record(TRACE_TASK_WAKE, task->id, -1, 0);
+            trace_record_irq_disabled(TRACE_TASK_WAKE, task->id, -1, 0);
         }
     }
 }
