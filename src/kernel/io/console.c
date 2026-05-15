@@ -3,6 +3,18 @@
 #include "rpi4/uart.h"
 #include "util/convert.h"
 
+static uint64_t console_write_counter = 0;
+
+static void console_touch(void)
+{
+    console_write_counter++;
+}
+
+uint64_t console_get_write_counter(void)
+{
+    return console_write_counter;
+}
+
 /*
  * Shared kernel console output path.
  *
@@ -12,11 +24,14 @@
  */
 void console_init(void)
 {
+    console_write_counter = 0;
     hdmi_console_init();
 }
 
 void console_putc(char c)
 {
+    console_touch();
+
     if (c == '\n')
     {
         uart_putc('\r');
@@ -36,6 +51,8 @@ void console_puts(const char *s)
     {
         return;
     }
+
+    console_touch();
 
     uart_puts(s);
 

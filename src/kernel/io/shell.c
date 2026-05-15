@@ -468,25 +468,13 @@ static void shell_cmd_env(void)
 
     console_puts("Environment sample:\n");
 
-    console_puts(" pressure raw: ");
-    console_put_int(sample.pressure_raw);
-    console_puts("\n");
-
     console_puts(" pressure: ");
     shell_print_centi(sample.pressure_centi_hpa);
     console_puts(" hPa\n");
 
-    console_puts(" humidity raw: ");
-    console_put_int((int)sample.humidity_raw);
-    console_puts("\n");
-
     console_puts(" humidity: ");
     shell_print_centi(sample.humidity_centi_percent);
     console_puts(" %\n");
-
-    console_puts(" temperature raw: ");
-    console_put_int((int)sample.temperature_raw);
-    console_puts("\n");
 
     console_puts(" temperature: ");
     shell_print_centi(sample.temperature_centi_c);

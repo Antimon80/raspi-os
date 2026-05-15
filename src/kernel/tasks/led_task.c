@@ -160,7 +160,10 @@ void led_task(void)
 
         irq_enable();
 
-        led_matrix_render_frame(&frame);
+        if (led_matrix_render_frame(&frame) < 0)
+        {
+            task_sleep(2);
+        }
     }
 }
 

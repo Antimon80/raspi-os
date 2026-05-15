@@ -399,12 +399,23 @@ void i2c_init(void)
  */
 int i2c_write(uint8_t addr, const uint8_t *data, size_t len)
 {
+    int result;
+
     if (i2c_start_write(addr, data, len) < 0)
     {
+        i2c_recover();
         return -1;
     }
 
-    return i2c_wait_for_transfer();
+    result = i2c_wait_for_transfer();
+
+    if (result < 0)
+    {
+        i2c_recover();
+        return -1;
+    }
+
+    return 0;
 }
 
 /*
@@ -415,12 +426,23 @@ int i2c_write(uint8_t addr, const uint8_t *data, size_t len)
  */
 int i2c_read(uint8_t addr, uint8_t *data, size_t len)
 {
+    int result;
+
     if (i2c_start_read(addr, data, len) < 0)
     {
+        i2c_recover();
         return -1;
     }
 
-    return i2c_wait_for_transfer();
+    result = i2c_wait_for_transfer();
+
+    if (result < 0)
+    {
+        i2c_recover();
+        return -1;
+    }
+
+    return 0;
 }
 
 /*
@@ -546,4 +568,14 @@ void i2c_handle_irq(void)
         mmio_write(BSC_S, BSC_S_CLEAR);
         i2c_finish_transfer(0);
     }
+}
+
+void i2c_recover(void)
+{
+    irq_disable();
+
+    i2c_reset_controller();
+    i2c_transfer_reset();
+
+    irq_enable();
 }

@@ -73,20 +73,20 @@ static led_matrix_color_t env_status_humidity_color(int32_t humidity_centi_perce
 {
     if (humidity_centi_percent < HUM_DRY_LIMIT_CENTI_PERCENT)
     {
-        return (led_matrix_color_t){180, 0, 180};
+        return (led_matrix_color_t){51, 255, 255};
     }
 
     if (humidity_centi_percent < HUM_LOW_LIMIT_CENTI_PERCENT)
     {
-        return (led_matrix_color_t){60, 160, 255};
+        return (led_matrix_color_t){51, 153, 255};
     }
 
     if (humidity_centi_percent < HUM_NORMAL_LIMIT_CENTI_PERCENT)
     {
-        return (led_matrix_color_t){0, 80, 220};
+        return (led_matrix_color_t){0, 0, 255};
     }
 
-    return (led_matrix_color_t){0, 220, 220};
+    return (led_matrix_color_t){102, 0, 204};
 }
 
 /*

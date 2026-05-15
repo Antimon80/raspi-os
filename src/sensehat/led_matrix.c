@@ -193,7 +193,6 @@ int led_matrix_present(void)
 
     if (rc < 0)
     {
-        uart_puts("led_matrix: present failed\n");
         return -1;
     }
 

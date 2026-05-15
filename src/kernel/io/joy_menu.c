@@ -20,10 +20,21 @@ typedef struct
     int selected;
     int center_pressed;
     uint64_t center_press_tick;
+    uint64_t render_count;
 } joy_menu_state_t;
 
 /* Global menu state (single instance) */
 static joy_menu_state_t menu_state;
+
+static void joy_menu_mark_rendered(void)
+{
+    menu_state.render_count = console_get_write_counter();
+}
+
+static int joy_menu_console_changed_since_render(void)
+{
+    return menu_state.render_count != console_get_write_counter();
+}
 
 /*
  * Static list of menu entries.
@@ -165,6 +176,8 @@ static void joy_menu_render(void)
             console_puts("\n");
         }
     }
+
+    joy_menu_mark_rendered();
 }
 
 /*
@@ -182,6 +195,12 @@ static void joy_menu_update_selection(int old_selected, int new_selected)
 
     if (old_selected == new_selected)
     {
+        return;
+    }
+
+    if (joy_menu_console_changed_since_render())
+    {
+        joy_menu_render();
         return;
     }
 
@@ -206,6 +225,8 @@ static void joy_menu_update_selection(int old_selected, int new_selected)
 
     joy_menu_cursor_down((unsigned int)new_line_from_menu_end);
     joy_menu_cursor_line_start();
+
+    joy_menu_mark_rendered();
 }
 
 static void joy_menu_move_selection(int delta)
@@ -243,6 +264,8 @@ void joy_menu_init(void)
     menu_state.selected = 0;
     menu_state.center_pressed = 0;
     menu_state.center_press_tick = 0;
+    menu_state.render_count = console_get_write_counter();
+
     joy_menu_render();
 }
 
