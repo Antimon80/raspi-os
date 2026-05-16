@@ -1,5 +1,5 @@
 #include "sensehat/hts221.h"
-#include "rpi4/i2c.h"
+#include "rpi4/drivers/i2c.h"
 
 #define HTS221_ADDR 0x5f      // I2C address of the HTS221 sensor
 #define HTS221_WHO_AMI_I 0x0f // Device ID register

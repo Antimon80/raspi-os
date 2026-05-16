@@ -1,4 +1,4 @@
-#include "rpi4/mmio.h"
+#include "rpi4/soc/mmio.h"
 
 /*
  * Write a 32-bit value to a memory-mapped hardware register.

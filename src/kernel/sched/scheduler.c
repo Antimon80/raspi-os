@@ -4,7 +4,7 @@
 #include "kernel/timer.h"
 #include "kernel/debug/trace.h"
 #include "kernel/irq.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 
 /*
  * Low-level context switch routine implemented in assembly.

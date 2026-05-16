@@ -2,10 +2,10 @@
 #include "kernel/tasks/joystick_task.h"
 #include "kernel/sched/scheduler.h"
 #include "sensehat/joystick.h"
-#include "rpi4/i2c.h"
-#include "rpi4/i2c_bus.h"
-#include "rpi4/gpio.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/i2c.h"
+#include "rpi4/drivers/i2c_bus.h"
+#include "rpi4/soc/gpio.h"
+#include "rpi4/drivers/uart.h"
 
 /*
  * Sense HAT controller I2C address and joystick state register.

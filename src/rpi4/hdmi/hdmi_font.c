@@ -1,4 +1,4 @@
-#include "rpi4/hdmi_font.h"
+#include "rpi4/hdmi/hdmi_font.h"
 
 /*
  * Extended 5x7 bitmap font for the HDMI text console.

@@ -1,5 +1,5 @@
 #include "kernel/debug/panic.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 #include "kernel/irq.h"
 
 /*

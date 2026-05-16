@@ -6,7 +6,7 @@
 #include "kernel/irq.h"
 #include "sensehat/lps25h.h"
 #include "sensehat/hts221.h"
-#include "rpi4/i2c_bus.h"
+#include "rpi4/drivers/i2c_bus.h"
 
 /*
  * Shared environment sample store.

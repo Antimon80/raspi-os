@@ -1,6 +1,6 @@
 #include "kernel/io/console.h"
 #include "kernel/io/hdmi_console.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 #include "util/convert.h"
 
 static uint64_t console_write_counter = 0;

@@ -6,7 +6,8 @@
 #include "kernel/sched/scheduler.h"
 #include "kernel/irq.h"
 #include "kernel/timer.h"
-#include "rpi4/hdmi.h"
+#include "rpi4/hdmi/hdmi.h"
+#include "rpi4/hdmi/hdmi_draw.h"
 #include "util/string.h"
 
 /* Game modes. */
@@ -840,7 +841,7 @@ static void ttt_render_hdmi(const ttt_game_t *game, int clear)
         ttt_render_result_hdmi(game);
     }
 
-    while (hdmi_flush_dirty(32u)){
+    while (hdmi_present(32u)){
 
     }
 }
@@ -984,7 +985,7 @@ void tictactoe_task(void)
     {
         ttt_hdmi_enabled = 1;
         hdmi_console_enable(0);
-        hdmi_clear_console();
+        hdmi_reset_console();
     }
 
     if (!ttt_led_enabled && !ttt_hdmi_enabled)
@@ -1090,7 +1091,7 @@ void tictactoe_task(void)
     joystick_clear_event_handler();
     if (ttt_hdmi_enabled)
     {
-        hdmi_clear_console();
+        hdmi_reset_console();
         hdmi_release(ttt_task_id);
         hdmi_console_enable(1);
     }

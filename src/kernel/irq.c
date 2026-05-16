@@ -2,10 +2,10 @@
 #include "kernel/timer.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/tasks/joystick_task.h"
-#include "rpi4/uart.h"
-#include "rpi4/mmio.h"
-#include "rpi4/gpio.h"
-#include "rpi4/i2c.h"
+#include "rpi4/drivers/uart.h"
+#include "rpi4/soc/mmio.h"
+#include "rpi4/soc/gpio.h"
+#include "rpi4/drivers/i2c.h"
 #include "sensehat/joystick.h"
 
 /*

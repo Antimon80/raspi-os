@@ -1,5 +1,5 @@
-#include "rpi4/gpio.h"
-#include "rpi4/mmio.h"
+#include "rpi4/soc/gpio.h"
+#include "rpi4/soc/mmio.h"
 
 /*
  * Base address of the peripheral register space on Raspberry Pi 4 (BCM2711).

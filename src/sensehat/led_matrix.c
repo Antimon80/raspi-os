@@ -1,7 +1,7 @@
 #include "sensehat/led_matrix.h"
-#include "rpi4/i2c.h"
-#include "rpi4/i2c_bus.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/i2c.h"
+#include "rpi4/drivers/i2c_bus.h"
+#include "rpi4/drivers/uart.h"
 
 /*
  * Sense HAT I2C device address.

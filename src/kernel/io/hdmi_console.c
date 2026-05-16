@@ -2,7 +2,7 @@
 #include "kernel/irq.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
-#include "rpi4/hdmi.h"
+#include "rpi4/hdmi/hdmi.h"
 
 #define HDMI_CONSOLE_BUFFER_SIZE 4096
 
@@ -245,7 +245,7 @@ void hdmi_console_task(void)
 
         irq_enable();
 
-        has_more_dirty = hdmi_flush_dirty(HDMI_DIRTY_CELLS_PER_SLICE);
+        has_more_dirty = hdmi_present(HDMI_DIRTY_CELLS_PER_SLICE);
 
         irq_disable();
 

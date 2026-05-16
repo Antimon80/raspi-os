@@ -1,4 +1,4 @@
-#include "rpi4/i2c_bus.h"
+#include "rpi4/drivers/i2c_bus.h"
 #include "kernel/sync/mutex.h"
 
 static mutex_t i2c_bus_mutex;

@@ -1,5 +1,5 @@
-#ifndef RPI4_UART_H
-#define RPI4_UART_H
+#ifndef RPI4_DRIVERS_UART_H
+#define RPI4_DRIVERS_UART_H
 
 #include <stdint.h>
 

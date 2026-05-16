@@ -2,7 +2,7 @@
 #include "kernel/io/shell.h"
 #include "kernel/io/console.h"
 #include "kernel/timer.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 
 #define JOY_LONG_PRESS_TICKS 50
 

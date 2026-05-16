@@ -1,9 +1,10 @@
-#include "rpi4/uart.h"
-#include "rpi4/hdmi.h"
-#include "rpi4/mmio.h"
-#include "rpi4/gpio.h"
-#include "rpi4/i2c.h"
-#include "rpi4/i2c_bus.h"
+#include "rpi4/drivers/uart.h"
+#include "rpi4/hdmi/hdmi.h"
+#include "rpi4/hdmi/hdmi_draw.h"
+#include "rpi4/soc/mmio.h"
+#include "rpi4/soc/gpio.h"
+#include "rpi4/drivers/i2c.h"
+#include "rpi4/drivers/i2c_bus.h"
 #include "kernel/irq.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
@@ -36,7 +37,7 @@ void main(void)
     {
         hdmi_ok = 1;
         hdmi_show_bootscreen();
-        hdmi_clear_console();
+        hdmi_reset_console();
     }
     else
     {

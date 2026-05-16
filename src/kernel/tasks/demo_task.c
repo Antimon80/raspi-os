@@ -19,7 +19,7 @@ void heartbeat_task(void)
 
         if ((counter % 10) == 0)
         {
-            log_append_current_task("heartbeat heartbeat ", counter);
+            log_append_current_task("heartbeat: ", counter);
         }
 
         task_sleep(100);
@@ -84,7 +84,7 @@ void burst_task(void)
             for (volatile int j = 0; j < 50000; j++)
             {
                         }
-            log_append_current_task("burst: sleep\n", 0);
+            log_append_current_task("burst: sleep ", 0);
             task_sleep(200);
         }
     }

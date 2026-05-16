@@ -1,6 +1,6 @@
-#include "rpi4/hdmi.h"
-#include "rpi4/hdmi_font.h"
-#include "rpi4/mmio.h"
+#include "rpi4/hdmi/hdmi.h"
+#include "rpi4/hdmi/hdmi_draw.h"
+#include "rpi4/soc/mmio.h"
 #include "kernel/irq.h"
 
 /*
@@ -40,19 +40,11 @@
 #define SCREEN_DEPTH 32u
 #define PIXEL_ORDER_RGB 1u
 
-/* Built-in bitmap font geometry. */
-#define GLYPH_WIDTH HDMI_FONT_GLYPH_WIDTH
-#define GLYPH_HEIGHT HDMI_FONT_GLYPH_HEIGHT
-#define GLYPH_SCALE 3u
-#define GLYPH_GAP_X 2u
-#define GLYPH_GAP_Y 4u
-#define CHAR_ADVANCE_X ((GLYPH_WIDTH * GLYPH_SCALE) + GLYPH_GAP_X)
-#define CHAR_ADVANCE_Y ((GLYPH_HEIGHT * GLYPH_SCALE) + GLYPH_GAP_Y)
-
+/* Maximum size of the logical HDMI text model */
 #define HDMI_MAX_COLUMNS 80u
 #define HDMI_MAX_ROWS 32u
 
-/* Console and bootscreen colors. */
+/* Shared color palette for the console chrome, text renderer and bootscreen. */
 #define CONSOLE_BG 0x00101820u
 #define CONSOLE_FG 0x00F2F6F8u
 #define CONSOLE_SHADOW 0x003A5366u
@@ -68,6 +60,13 @@
 #define BOOT_CARD_EDGE 0x001B2A3Eu
 #define BOOT_GLOW 0x000C3D69u
 
+/*
+ * One logical HDMI text cell.
+ *
+ * The text model stores the desired cell state. drawn_cells stores the last
+ * state that was flushed to the framebuffer. The dirty flag marks cells that
+ * must be repainted by hdmi_present().
+ */
 typedef struct
 {
     char ch;
@@ -110,445 +109,9 @@ static int ansi_state = 0;
 static uint32_t ansi_value = 0;
 static int ansi_has_value = 0;
 
-/* Ownership and availabilty state. */
+/* Ownership and availability state. */
 static int hdmi_owner_task_id = -1;
 static int hdmi_ready = 0;
-
-/*
- * Normalize characters for the small bitmap font.
- * Lowercase input is rendered as uppercase.
- */
-static char hdmi_normalize_char(char c)
-{
-    if (c >= 'a' && c <= 'z')
-    {
-        return (char)(c - ('a' - 'A'));
-    }
-
-    return c;
-}
-
-/*
- * Return the bitmap rows for a single character.
- * Unknown characters fall back to '?'.
- */
-static const uint8_t *hdmi_lookup_glyph(char c)
-{
-    char normalized = hdmi_normalize_char(c);
-    unsigned int i;
-
-    for (i = 0; i < hdmi_font_count; i++)
-    {
-        if (hdmi_font[i].c == normalized)
-        {
-            return hdmi_font[i].rows;
-        }
-    }
-
-    return hdmi_font[27].rows;
-}
-
-/*
- * Write one pixel into the framebuffer.
- */
-static void hdmi_draw_pixel(uint32_t x, uint32_t y, uint32_t color)
-{
-    volatile uint8_t *row;
-    volatile uint32_t *pixel;
-
-    if (!framebuffer || x >= framebuffer_width || y >= framebuffer_height)
-    {
-        return;
-    }
-
-    row = (volatile uint8_t *)framebuffer + (y * framebuffer_pitch);
-    pixel = (volatile uint32_t *)(row + (x * sizeof(uint32_t)));
-    *pixel = color;
-}
-
-/*
- * Fill a solid rectangle with a single color.
- */
-static void hdmi_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color)
-{
-    uint32_t yy;
-    uint32_t xx;
-    uint32_t max_x;
-    uint32_t max_y;
-    uint32_t clipped_width;
-    uint32_t clipped_height;
-    volatile uint32_t *row;
-
-    if (!framebuffer || width == 0u || height == 0u)
-    {
-        return;
-    }
-
-    if (x >= framebuffer_width || y >= framebuffer_height)
-    {
-        return;
-    }
-
-    max_x = x + width;
-    max_y = y + height;
-
-    if (max_x < x || max_x > framebuffer_width)
-    {
-        max_x = framebuffer_width;
-    }
-
-    if (max_y < y || max_y > framebuffer_height)
-    {
-        max_y = framebuffer_height;
-    }
-
-    clipped_width = max_x - x;
-    clipped_height = max_y - y;
-
-    for (yy = 0; yy < clipped_height; yy++)
-    {
-        row = (volatile uint32_t *)((volatile uint8_t *)framebuffer +
-                                    ((y + yy) * framebuffer_pitch) +
-                                    (x * sizeof(uint32_t)));
-
-        for (xx = 0; xx < clipped_width; xx++)
-        {
-            row[xx] = color;
-        }
-    }
-}
-
-/*
- * Fill a rectangle using a simple linear color blend.
- * The blend direction is vertical if 'vertical' is non-zero.
- */
-static void hdmi_fill_rect_blend(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-                                 uint32_t color_a, uint32_t color_b, int vertical)
-{
-    uint32_t yy;
-    uint32_t xx;
-    uint32_t max_x;
-    uint32_t max_y;
-    uint32_t clipped_width;
-    uint32_t clipped_height;
-    uint32_t steps = vertical ? height : width;
-    uint32_t r1;
-    uint32_t g1;
-    uint32_t b1;
-    uint32_t r2;
-    uint32_t g2;
-    uint32_t b2;
-    uint32_t divisor;
-    volatile uint32_t *row;
-
-    if (!framebuffer || width == 0u || height == 0u)
-    {
-        return;
-    }
-
-    if (x >= framebuffer_width || y >= framebuffer_height)
-    {
-        return;
-    }
-
-    if (steps <= 1u)
-    {
-        hdmi_fill_rect(x, y, width, height, color_a);
-        return;
-    }
-
-    max_x = x + width;
-    max_y = y + height;
-
-    if (max_x < x || max_x > framebuffer_width)
-    {
-        max_x = framebuffer_width;
-    }
-
-    if (max_y < y || max_y > framebuffer_height)
-    {
-        max_y = framebuffer_height;
-    }
-
-    clipped_width = max_x - x;
-    clipped_height = max_y - y;
-    r1 = (color_a >> 16) & 0xFFu;
-    g1 = (color_a >> 8) & 0xFFu;
-    b1 = color_a & 0xFFu;
-    r2 = (color_b >> 16) & 0xFFu;
-    g2 = (color_b >> 8) & 0xFFu;
-    b2 = color_b & 0xFFu;
-    divisor = steps - 1u;
-
-    for (yy = 0; yy < clipped_height; yy++)
-    {
-        row = (volatile uint32_t *)((volatile uint8_t *)framebuffer +
-                                    ((y + yy) * framebuffer_pitch) +
-                                    (x * sizeof(uint32_t)));
-
-        for (xx = 0; xx < clipped_width; xx++)
-        {
-            uint32_t t = vertical ? yy : xx;
-            uint32_t r = ((r1 * (divisor - t)) + (r2 * t)) / divisor;
-            uint32_t g = ((g1 * (divisor - t)) + (g2 * t)) / divisor;
-            uint32_t b = ((b1 * (divisor - t)) + (b2 * t)) / divisor;
-
-            row[xx] = (r << 16) | (g << 8) | b;
-        }
-    }
-}
-
-/*
- * Draw a simple panel frame with a one-pixel border.
- */
-static void hdmi_draw_frame(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-                            uint32_t border, uint32_t fill)
-{
-    if (width < 2u || height < 2u)
-    {
-        return;
-    }
-
-    hdmi_fill_rect(x, y, width, height, border);
-    hdmi_fill_rect(x + 1u, y + 1u, width - 2u, height - 2u, fill);
-}
-
-static void hdmi_fill_circle(uint32_t cx, uint32_t cy, uint32_t radius, uint32_t color)
-{
-    int32_t r = (int32_t)radius;
-    int32_t rr = r * r;
-
-    for (int32_t y = -r; y <= r; y++)
-    {
-        for (int32_t x = -r; x <= r; x++)
-        {
-            if ((x * x) + (y * y) <= rr)
-            {
-                hdmi_draw_pixel((uint32_t)((int32_t)cx + x), (uint32_t)((int32_t)cy + y), color);
-            }
-        }
-    }
-}
-
-static void hdmi_draw_circle_ring(uint32_t cx, uint32_t cy, uint32_t outer_radius,
-                                  uint32_t inner_radius, uint32_t color)
-{
-    int32_t outer = (int32_t)outer_radius;
-    int32_t inner = (int32_t)inner_radius;
-    int32_t outer_rr = outer * outer;
-    int32_t inner_rr = inner * inner;
-
-    for (int32_t y = -outer; y <= outer; y++)
-    {
-        for (int32_t x = -outer; x <= outer; x++)
-        {
-            int32_t dist = (x * x) + (y * y);
-
-            if (dist <= outer_rr && dist >= inner_rr)
-            {
-                hdmi_draw_pixel((uint32_t)((int32_t)cx + x), (uint32_t)((int32_t)cy + y), color);
-            }
-        }
-    }
-}
-
-/*
- * Draw a coarse quarter-circle glow used in the bootscreen background.
- */
-static void hdmi_draw_corner_glow(uint32_t cx, uint32_t cy, uint32_t radius, uint32_t color)
-{
-    uint32_t y;
-    uint32_t x;
-    uint32_t rr = radius * radius;
-
-    for (y = 0; y < radius; y++)
-    {
-        for (x = 0; x < radius; x++)
-        {
-            uint32_t dx = radius - x;
-            uint32_t dy = radius - y;
-            uint32_t dist = (dx * dx) + (dy * dy);
-
-            if (dist <= rr)
-            {
-                hdmi_draw_pixel(cx + x, cy + y, color);
-            }
-        }
-    }
-}
-
-/*
- * Return the rendered width of a string in console character cells.
- */
-static uint32_t hdmi_string_width(const char *s)
-{
-    uint32_t width = 0;
-
-    while (s && *s)
-    {
-        width += CHAR_ADVANCE_X;
-        s++;
-    }
-
-    return width;
-}
-
-/*
- * Draw one scaled bitmap glyph with a subtle shadow.
- *
- * This is  a low-level rendering primitive only. Normal console output must
- * modify text_cells[] and let hdmi_flush_dirty() call this function.
- */
-static void hdmi_draw_char_at(uint32_t px, uint32_t py, char c, uint32_t fg, uint32_t bg)
-{
-    const uint8_t *glyph;
-    uint32_t row;
-    uint32_t col;
-    uint32_t sy;
-    uint32_t sx;
-    uint32_t x;
-    uint32_t y;
-
-    if (c == 0)
-    {
-        c = ' ';
-    }
-
-    glyph = hdmi_lookup_glyph(c);
-
-    hdmi_fill_rect(px, py, CHAR_ADVANCE_X, CHAR_ADVANCE_Y, bg);
-
-    if (c == ' ')
-    {
-        return;
-    }
-
-    for (row = 0; row < GLYPH_HEIGHT; row++)
-    {
-        for (col = 0; col < GLYPH_WIDTH; col++)
-        {
-            if (!(glyph[row] & (1u << (GLYPH_WIDTH - 1u - col))))
-            {
-                continue;
-            }
-
-            for (sy = 0; sy < GLYPH_SCALE; sy++)
-            {
-                y = py + 1u + (row * GLYPH_SCALE) + sy;
-
-                for (sx = 0; sx < GLYPH_SCALE; sx++)
-                {
-                    x = px + 1u + (col * GLYPH_SCALE) + sx;
-                    hdmi_draw_pixel(x + 1u, y + 1u, CONSOLE_SHADOW);
-                    hdmi_draw_pixel(x, y, fg);
-                }
-            }
-        }
-    }
-}
-
-/*
- * Draw a zero-terminated string using the built-in bitmap font.
- */
-static void hdmi_draw_string_at(uint32_t px, uint32_t py, const char *s, uint32_t fg, uint32_t bg)
-{
-    uint32_t x = px;
-
-    while (s && *s)
-    {
-        hdmi_draw_char_at(x, py, *s, fg, bg);
-        x += CHAR_ADVANCE_X;
-        s++;
-    }
-}
-
-/*
- * Draw the small status indicator shown in the console header.
- */
-static void hdmi_draw_status_dot(uint32_t phase)
-{
-    uint32_t color;
-
-    if (!framebuffer)
-    {
-        return;
-    }
-
-    hdmi_fill_rect(status_dot_x, status_dot_y, 10u, 10u, CONSOLE_PANEL_ALT);
-
-    switch (phase % 4u)
-    {
-    case 0u:
-        color = 0x003A5366u;
-        break;
-    case 1u:
-        color = 0x00467EA6u;
-        break;
-    case 2u:
-        color = 0x0028C7FAu;
-        break;
-    default:
-        color = 0x0090EBFFu;
-        break;
-    }
-
-    hdmi_fill_rect(status_dot_x + 1u, status_dot_y + 1u, 8u, 8u, color);
-}
-
-/*
- * Draw the thin text cursor as an overlay inside one already-rendered cell.
- */
-static void hdmi_draw_cursor_at(uint32_t px, uint32_t py, uint32_t bg)
-{
-    uint32_t h = (GLYPH_HEIGHT * GLYPH_SCALE) + 2u;
-
-    (void)bg;
-
-    hdmi_fill_rect(px + (GLYPH_WIDTH * GLYPH_SCALE) + 1u, py + 2u, 3u, h, CONSOLE_ACCENT);
-}
-
-/*
- * Draw the graphical progress bar used in the bootscreen.
- */
-static void hdmi_draw_progress_bar(uint32_t x, uint32_t y, uint32_t width, uint32_t progress)
-{
-    uint32_t fill_width;
-
-    hdmi_draw_frame(x, y, width, 14u, BOOT_CARD_EDGE, BOOT_CARD);
-    hdmi_fill_rect_blend(x + 2u, y + 2u, width - 4u, 10u, 0x000D1420u, 0x00111D2Au, 0);
-
-    fill_width = ((width - 4u) * progress) / 100u;
-    if (fill_width > 0u)
-    {
-        hdmi_fill_rect_blend(x + 2u, y + 2u, fill_width, 10u, 0x001B7FE0u, 0x0041E4FFu, 0);
-        if (fill_width > 10u)
-        {
-            hdmi_fill_rect(x + 2u + fill_width - 8u, y + 2u, 6u, 10u, 0x0098F4FFu);
-        }
-    }
-}
-
-static void hdmi_draw_boot_badge(uint32_t x, uint32_t y)
-{
-    uint32_t cx = x + 78u;
-    uint32_t cy = y + 78u;
-
-    hdmi_fill_circle(cx, cy, 78u, 0x00111D2Au);
-    hdmi_draw_circle_ring(cx, cy, 78u, 73u, 0x0028C7FAu);
-    hdmi_draw_circle_ring(cx, cy, 63u, 60u, 0x001B7FE0u);
-
-    hdmi_fill_rect(cx - 38u, cy - 40u, 76u, 80u, 0x001B2633u);
-    hdmi_fill_rect(cx - 31u, cy - 31u, 62u, 62u, 0x000E1623u);
-    hdmi_fill_rect(cx - 44u, cy - 22u, 12u, 44u, 0x0028C7FAu);
-    hdmi_fill_rect(cx + 32u, cy - 22u, 12u, 44u, 0x0028C7FAu);
-    hdmi_fill_rect(cx - 22u, cy - 46u, 44u, 12u, 0x0041E4FFu);
-    hdmi_fill_rect(cx - 22u, cy + 34u, 44u, 12u, 0x0041E4FFu);
-
-    hdmi_fill_rect(cx - 18u, cy - 18u, 36u, 36u, 0x0028C7FAu);
-    hdmi_fill_rect(cx - 11u, cy - 11u, 22u, 22u, 0x0098F4FFu);
-    hdmi_fill_rect(cx - 3u, cy - 50u, 6u, 100u, 0x00111D2Au);
-    hdmi_fill_rect(cx - 50u, cy - 3u, 100u, 6u, 0x00111D2Au);
-}
 
 /*
  * Mark one logical cell dirty.
@@ -788,7 +351,10 @@ static void hdmi_handle_csi(char c)
 
 /*
  * Draw the static part of the bootscreen.
- * The progress bar is updated separately during the short boot animation.
+ *
+ * This function defines only the bootscreen layout. The actual framebuffer
+ * drawing is delegated to hdmi_draw.c. The progress bar is updated separately
+ * during the short boot animation.
  */
 static void hdmi_draw_bootscreen_static(void)
 {
@@ -810,12 +376,12 @@ static void hdmi_draw_bootscreen_static(void)
     hdmi_draw_frame(card_x, card_y, card_w, card_h, BOOT_CARD_EDGE, BOOT_CARD);
     hdmi_fill_rect(card_x + 1u, card_y + 1u, card_w - 2u, 8u, CONSOLE_ACCENT);
     hdmi_fill_rect(card_x + 26u, card_y + 24u, 108u, 18u, 0x00111C2A);
-    hdmi_draw_string_at(card_x + 32u, card_y + 20u, eyebrow, BOOT_MUTED, BOOT_CARD);
+    hdmi_draw_string_at(card_x + 32u, card_y + 20u, eyebrow, BOOT_MUTED, BOOT_CARD, CONSOLE_SHADOW);
 
     hdmi_draw_boot_badge(logo_x, logo_y);
 
-    hdmi_draw_string_at((framebuffer_width - hdmi_string_width(title)) / 2u, card_y + 206u, title, CONSOLE_FG, BOOT_CARD);
-    hdmi_draw_string_at((framebuffer_width - hdmi_string_width(subtitle)) / 2u, card_y + 236u, subtitle, BOOT_MUTED, BOOT_CARD);
+    hdmi_draw_string_at((framebuffer_width - hdmi_string_width(title)) / 2u, card_y + 206u, title, CONSOLE_FG, BOOT_CARD, CONSOLE_SHADOW);
+    hdmi_draw_string_at((framebuffer_width - hdmi_string_width(subtitle)) / 2u, card_y + 236u, subtitle, BOOT_MUTED, BOOT_CARD, CONSOLE_SHADOW);
 }
 
 /*
@@ -832,39 +398,80 @@ static void hdmi_update_boot_progress(uint32_t progress)
 }
 
 /*
- * Draw the static console chrome around the HDMI text area.
+ * Show the short animated HDMI bootscreen.
+ *
+ * Called before the scheduler is running, so a plain busy-wait is used.
+ * No scheduler_yield() here – there are no runnable tasks yet.
+ */
+void hdmi_show_bootscreen(void)
+{
+    uint32_t progress;
+
+    if (!framebuffer)
+    {
+        return;
+    }
+
+    hdmi_draw_bootscreen_static();
+
+    for (progress = 0u; progress <= 100u; progress += 5u)
+    {
+        hdmi_update_boot_progress(progress);
+        hdmi_wait_ms(90u);
+    }
+}
+
+/*
+ * Draw the static console chrome and calculate the text surface.
+ *
+ * This recreates the background, panel frame, title bar, status indicator and
+ * text-area geometry. It must be called after framebuffer initialization and
+ * whenever the full HDMI console layout has to be restored.
+ *
+ * The logical text model is reinitialized because changing the layout may
+ * change the visible row and column count.
  */
 static void hdmi_draw_console_chrome(void)
 {
-    uint32_t panel_x = 48u;
-    uint32_t panel_y = 38u;
-    uint32_t panel_w = framebuffer_width - 96u;
-    uint32_t panel_h = framebuffer_height - 76u;
+    uint32_t panel_x = 0u;
+    uint32_t panel_y = 0u;
+    uint32_t panel_w = framebuffer_width;
+    uint32_t panel_h = framebuffer_height;
+
     uint32_t header_h = 42u;
-    uint32_t padding_x = 24u;
-    uint32_t padding_y = 22u;
+    uint32_t padding_x = 14u;
+    uint32_t padding_top = 12u;
+    uint32_t padding_bottom = 10u;
+
     uint32_t calculated_columns;
     uint32_t calculated_rows;
 
-    hdmi_fill_rect_blend(0u, 0u, framebuffer_width, framebuffer_height, 0x000C1520u, CONSOLE_BG, 1);
-    hdmi_fill_rect_blend(0u, 0u, framebuffer_width, 120u, 0x00152131u, CONSOLE_BG, 1);
+    if (!framebuffer || framebuffer_width == 0u || framebuffer_height == 0u)
+    {
+        return;
+    }
 
-    hdmi_draw_frame(panel_x, panel_y, panel_w, panel_h, CONSOLE_BORDER, CONSOLE_PANEL);
+    hdmi_fill_rect(panel_x, panel_y, panel_w, panel_h, CONSOLE_BORDER);
+    hdmi_fill_rect(panel_x + 1u, panel_y + 1u, panel_w - 2u, panel_h - 2u, CONSOLE_PANEL);
+
     hdmi_fill_rect(panel_x + 1u, panel_y + 1u, panel_w - 2u, header_h, CONSOLE_PANEL_ALT);
     hdmi_fill_rect(panel_x + 1u, panel_y + header_h + 1u, panel_w - 2u, 2u, CONSOLE_ACCENT);
+
     hdmi_fill_rect(panel_x + 18u, panel_y + 13u, 10u, 10u, 0x00FF6B6Bu);
     hdmi_fill_rect(panel_x + 34u, panel_y + 13u, 10u, 10u, 0x00FFCE54u);
     hdmi_fill_rect(panel_x + 50u, panel_y + 13u, 10u, 10u, 0x0048E27Bu);
-    hdmi_draw_string_at(panel_x + 84u, panel_y + 8u, "HDMI Console", CONSOLE_FG, CONSOLE_PANEL_ALT);
+
+    hdmi_draw_string_at(panel_x + 84u, panel_y + 8u, "HDMI Console", CONSOLE_FG, CONSOLE_PANEL_ALT, CONSOLE_SHADOW);
 
     status_dot_x = panel_x + panel_w - 30u;
     status_dot_y = panel_y + 13u;
-    hdmi_draw_status_dot(0u);
+    hdmi_draw_status_dot(status_dot_x, status_dot_y, 0u, CONSOLE_PANEL_ALT);
 
     console_origin_x = panel_x + padding_x;
-    console_origin_y = panel_y + header_h + padding_y;
+    console_origin_y = panel_y + header_h + padding_top;
+
     console_content_width = panel_w - (padding_x * 2u);
-    console_content_height = panel_h - header_h - (padding_y * 2u) - 8u;
+    console_content_height = panel_h - header_h - padding_top - padding_bottom;
 
     calculated_columns = console_content_width / CHAR_ADVANCE_X;
     calculated_rows = console_content_height / CHAR_ADVANCE_Y;
@@ -927,7 +534,8 @@ static int mailbox_call(uint8_t channel)
  *  - request a 1280x720 framebuffer in 32-bit RGB format
  *  - allocate the framebuffer through the firmware
  *  - query the framebuffer pitch
- *  - draw the static console chrome
+ *  - attach hdmi_draw.c to the allocated framebuffer
+ *  - draw the initial console chrome and flush the text model once
  *
  * Returns 1 on success and 0 on failure.
  */
@@ -999,19 +607,33 @@ int hdmi_init(void)
     framebuffer_width = mailbox[10];
     framebuffer_height = mailbox[11];
     framebuffer_pitch = mailbox[33];
+    hdmi_draw_set_framebuffer(framebuffer, framebuffer_width, framebuffer_height, framebuffer_pitch);
 
     hdmi_ready = 1;
 
     hdmi_draw_console_chrome();
-    hdmi_flush_dirty(HDMI_MAX_COLUMNS * HDMI_MAX_ROWS);
+    hdmi_present(HDMI_MAX_COLUMNS * HDMI_MAX_ROWS);
     return 1;
 }
 
+/*
+ * Return whether HDMI output is ready for use.
+ *
+ * HDMI is considered available only after the firmware framebuffer was
+ * allocated successfully and the draw module has been attached to it.
+ */
 int hdmi_is_available(void)
 {
     return hdmi_ready && framebuffer != 0;
 }
 
+/*
+ * Acquire direct HDMI ownership for a task.
+ *
+ * A task may acquire HDMI if no other direct owner exists, or if it already is
+ * the current owner. Returns 0 on success and -1 if HDMI is unavailable or
+ * owned by another task.
+ */
 int hdmi_acquire(int task_id)
 {
     int result = -1;
@@ -1033,6 +655,11 @@ int hdmi_acquire(int task_id)
     return result;
 }
 
+/*
+ * Release direct HDMI ownership for a task.
+ *
+ * Releasing a task that does not own HDMI has no effect.
+ */
 void hdmi_release(int task_id)
 {
     if (task_id < 0)
@@ -1050,12 +677,22 @@ void hdmi_release(int task_id)
     irq_enable();
 }
 
+/*
+ * Set the foreground and background colors used for subsequently written text
+ * cells.
+ *
+ * Existing cells are not repainted unless their contents are changed or marked
+ * dirty separately.
+ */
 void hdmi_set_text_colors(uint32_t fg, uint32_t bg)
 {
     text_fg = fg;
     text_bg = bg;
 }
 
+/*
+ * Restore the default HDMI console text colors.
+ */
 void hdmi_reset_text_colors(void)
 {
     text_fg = CONSOLE_FG;
@@ -1064,7 +701,7 @@ void hdmi_reset_text_colors(void)
 
 /*
  * Move the logical cursor. The old and new cells are dirty because the cursor is
- * rendered as an overlay by hdmi_flush_dirty().
+ * rendered as an overlay by hdmi_present().
  */
 void hdmi_set_cursor(uint32_t column, uint32_t row)
 {
@@ -1094,8 +731,12 @@ void hdmi_set_cursor(uint32_t column, uint32_t row)
 }
 
 /*
- * Draw one character into the HDMI text console.
- * Control characters for newline, tab and backspace are handled explicitly.
+ * Write one character into the logical HDMI text console.
+ *
+ * Printable characters update text_cells and mark affected cells dirty. The
+ * framebuffer is not touched here; hdmi_present() performs the actual flush.
+ * Newline, carriage return, tab, backspace and a minimal CSI subset are handled
+ * explicitly.
  */
 void hdmi_putc(char c)
 {
@@ -1191,7 +832,7 @@ void hdmi_putc(char c)
 }
 
 /*
- * Draw a zero-terminated string into the HDMI console.
+ * Draw a zero-terminated string into the logical HDMI text console.
  */
 void hdmi_puts(const char *s)
 {
@@ -1202,13 +843,17 @@ void hdmi_puts(const char *s)
 }
 
 /*
- * Render at most max_cells dirty text cells into the real framebuffer.
+ * Flush at most max_cells dirty text cells into the framebuffer.
+ *
+ * The logical text model is compared against drawn_cells so unchanged cells can
+ * be skipped. The cursor is rendered as an overlay and therefore causes its
+ * current cell to be repainted when needed.
  *
  * Return value:
  *   1 if more dirty work remains
  *   0 if the visible console is fully up to date
  */
-int hdmi_flush_dirty(uint32_t max_cells)
+int hdmi_present(uint32_t max_cells)
 {
     uint32_t row;
     uint32_t col;
@@ -1233,10 +878,6 @@ int hdmi_flush_dirty(uint32_t max_cells)
             hdmi_cell_t *drawn = &drawn_cells[row][col];
             int is_cursor = cursor_visible && row == cursor_y && col == cursor_x;
 
-            /*
-             * The cursor is rendered as an overlay, so its cell must be
-             * repainted when either the cell is dirty or the cursor sits there.
-             */
             if (!cell->dirty && cell->ch == drawn->ch &&
                 cell->fg == drawn->fg && cell->bg == drawn->bg)
             {
@@ -1253,11 +894,11 @@ int hdmi_flush_dirty(uint32_t max_cells)
                 uint32_t px = console_origin_x + (col * CHAR_ADVANCE_X);
                 uint32_t py = console_origin_y + (row * CHAR_ADVANCE_Y);
 
-                hdmi_draw_char_at(px, py, cell->ch, cell->fg, cell->bg);
+                hdmi_draw_char_at(px, py, cell->ch, cell->fg, cell->bg, CONSOLE_SHADOW);
 
                 if (is_cursor)
                 {
-                    hdmi_draw_cursor_at(px, py, cell->bg);
+                    hdmi_draw_cursor_at(px, py, CONSOLE_ACCENT);
                 }
             }
 
@@ -1275,31 +916,7 @@ int hdmi_flush_dirty(uint32_t max_cells)
 }
 
 /*
- * Show the short animated HDMI bootscreen.
- *
- * Called before the scheduler is running, so a plain busy-wait is used.
- * No scheduler_yield() here – there are no runnable tasks yet.
- */
-void hdmi_show_bootscreen(void)
-{
-    uint32_t progress;
-
-    if (!framebuffer)
-    {
-        return;
-    }
-
-    hdmi_draw_bootscreen_static();
-
-    for (progress = 0u; progress <= 100u; progress += 5u)
-    {
-        hdmi_update_boot_progress(progress);
-        hdmi_wait_ms(90u);
-    }
-}
-
-/*
- * Clear the HDMI text console and redraw its static chrome.
+ * Clear only the HDMI text console. The static chrome remains untouched.
  */
 void hdmi_clear_console(void)
 {

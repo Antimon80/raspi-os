@@ -1,7 +1,7 @@
 #include "kernel/memory/heap.h"
 #include "kernel/debug/panic.h"
 #include "kernel/io/console.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 
 #define HEAP_SIZE (4 * 1024 * 1024)
 #define HEAP_ALIGNMENT 16

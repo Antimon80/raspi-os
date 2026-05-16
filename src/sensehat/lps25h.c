@@ -1,5 +1,5 @@
 #include "sensehat/lps25h.h"
-#include "rpi4/i2c.h"
+#include "rpi4/drivers/i2c.h"
 
 #define LPS25H_ADDR 0x5c         // I2C address of the LPS25H pressure sensor
 #define LPS25H_WHO_AM_I 0x0f     // Device ID register

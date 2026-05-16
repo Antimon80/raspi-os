@@ -4,7 +4,7 @@
 #include "kernel/io/console.h"
 #include "kernel/irq.h"
 #include "sensehat/led_matrix.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 
 static int led_task_id = -1;
 static int led_owner_task_id = -1;

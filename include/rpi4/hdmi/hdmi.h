@@ -1,5 +1,5 @@
-#ifndef RPI4_HDMI_H
-#define RPI4_HDMI_H
+#ifndef RPI4_HDMI_HDMI_H
+#define RPI4_HDMI_HDMI_H
 
 #include <stdint.h>
 
@@ -19,7 +19,7 @@ void hdmi_puts(const char *s);
 void hdmi_show_bootscreen(void);
 void hdmi_clear_console(void);
 void hdmi_reset_console(void);
-int hdmi_flush_dirty(uint32_t max_cells);
+int hdmi_present(uint32_t max_cells);
 
 void hdmi_wait_ms(uint32_t ms);
 

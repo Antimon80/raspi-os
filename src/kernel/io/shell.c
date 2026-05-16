@@ -12,7 +12,7 @@
 #include "kernel/tasks/env_status_task.h"
 #include "kernel/debug/trace.h"
 #include "sensehat/led_matrix.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 #include "util/string.h"
 #include "util/convert.h"
 

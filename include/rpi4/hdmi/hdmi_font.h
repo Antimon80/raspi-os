@@ -1,5 +1,5 @@
-#ifndef RPI4_HDMI_FONT_H
-#define RPI4_HDMI_FONT_H
+#ifndef RPI4_HDMI_HDMI_FONT_H
+#define RPI4_HDMI_HDMI_FONT_H
 
 #include <stdint.h>
 

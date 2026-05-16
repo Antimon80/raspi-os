@@ -4,7 +4,7 @@
 #include "kernel/sched/task.h"
 #include "kernel/irq.h"
 #include "sensehat/joystick.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 
 static int joystick_task_id = -1;
 static joystick_event_handler_t joystick_event_handler = 0;

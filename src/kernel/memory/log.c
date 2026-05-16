@@ -3,7 +3,7 @@
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
 #include "kernel/io/console.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 #include "util/string.h"
 
 #define LOG_MAX_ENTRIES_PER_TASK 32

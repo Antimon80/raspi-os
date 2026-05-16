@@ -1,5 +1,5 @@
-#ifndef RPI4_I2C_H
-#define RPI4_I2C_H
+#ifndef RPI4_DRIVERS_I2C_H
+#define RPI4_DRIVERS_I2C_H
 
 #include <stdint.h>
 #include <stddef.h>

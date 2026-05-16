@@ -4,7 +4,7 @@
 #include "kernel/io/console.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
-#include "rpi4/uart.h"
+#include "rpi4/drivers/uart.h"
 #include <stdint.h>
 
 #define WIDTH 8
