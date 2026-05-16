@@ -1,6 +1,7 @@
 #include "kernel/timer.h"
 #include "kernel/debug/trace.h"
 #include "kernel/sched/task.h"
+#include "kernel/io/console.h"
 
 static volatile uint64_t system_ticks = 0;
 static uint32_t timer_interval = 0;
@@ -28,6 +29,16 @@ static void timer_wake_sleeping_tasks(uint64_t now)
     }
 }
 
+static void timer_print_two_digits(unsigned int value)
+{
+    if (value < 10u)
+    {
+        console_puts("0");
+    }
+
+    console_put_uint(value);
+}
+
 /*
  * Return the current system tick counter.
  */
@@ -49,6 +60,22 @@ uint64_t timer_ticks_to_seconds(uint64_t ticks)
     }
 
     return ticks / timer_tick_hz;
+}
+
+void timer_print_timestamp(uint64_t tick)
+{
+    uint64_t seconds = timer_ticks_to_seconds(tick);
+    unsigned int hours = (unsigned int)(seconds / 3600u);
+    unsigned int minutes = (unsigned int)((seconds / 60u) % 60u);
+    unsigned int secs = (unsigned int)(seconds % 60u);
+
+    console_puts("[");
+    timer_print_two_digits(hours);
+    console_puts(":");
+    timer_print_two_digits(minutes);
+    console_puts(":");
+    timer_print_two_digits(secs);
+    console_puts("] ");
 }
 
 /*

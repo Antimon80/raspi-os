@@ -178,7 +178,7 @@ void led_task(void)
             continue;
         }
 
-        if (consecutive_present_failures > 0u)
+        if (consecutive_present_failures > 10u)
         {
             log_append_current_task("led: present recovered after failures=", (int)consecutive_present_failures);
             consecutive_present_failures = 0;

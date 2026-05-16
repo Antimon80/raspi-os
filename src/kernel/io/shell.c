@@ -11,6 +11,7 @@
 #include "kernel/tasks/env_task.h"
 #include "kernel/tasks/env_status_task.h"
 #include "kernel/debug/trace.h"
+#include "kernel/timer.h"
 #include "sensehat/led_matrix.h"
 #include "rpi4/drivers/uart.h"
 #include "util/string.h"
@@ -275,21 +276,6 @@ void shell_cmd_start_arg(const char *name)
         return;
     }
 
-    if (str_equals(name, "gol"))
-    {
-        gol_register_task_id(id);
-    }
-
-    if (str_equals(name, "env"))
-    {
-        env_register_task_id(id);
-    }
-
-    if (str_equals(name, "envled"))
-    {
-        env_status_register_task_id(id);
-    }
-
     console_puts("task started with id ");
     console_put_uint((unsigned int)id);
     console_puts("\n");
@@ -335,15 +321,21 @@ void shell_cmd_stop_id(int id)
     if (id == gol_get_task_id())
     {
         led_release(id);
-        gol_register_task_id(-1);
+        gol_set_task_id(-1);
         log_append_current_task("shell: released LED for gol id=", id);
     }
 
     if (id == env_status_get_task_id())
     {
         led_release(id);
-        env_status_register_task_id(-1);
+        env_status_set_task_id(-1);
         log_append_current_task("shell: released LED for envled id=", id);
+    }
+
+    if (id == ttt_get_task_id())
+    {
+        ttt_cleanup_resources();
+        log_append_current_task("shell: released LED and HDMI console for tictactoe id=", id);
     }
 
     console_puts("stop requested for task ");
@@ -498,7 +490,8 @@ static void shell_cmd_env(void)
         return;
     }
 
-    console_puts("Environment sample:\n");
+    console_puts("=========================\n");
+    console_puts("Environment sample:\n\n");
 
     console_puts(" pressure: ");
     shell_print_centi(sample.pressure_centi_hpa);
@@ -510,11 +503,14 @@ static void shell_cmd_env(void)
 
     console_puts(" temperature: ");
     shell_print_centi(sample.temperature_centi_c);
-    console_puts(" °C\n");
+    console_puts(" ");
+    console_putc((char)0xB0);
+    console_puts("C\n");
 
-    console_puts(" tick: ");
-    console_put_u64(sample.tick);
+    console_puts(" uptime: ");
+    timer_print_timestamp(sample.tick);
     console_puts("\n");
+    console_puts("=========================\n");
 }
 
 static void shell_cmd_env_history(void)
@@ -530,27 +526,31 @@ static void shell_cmd_env_history(void)
         return;
     }
 
-    console_puts("Environment history:\n");
+    console_puts("====================================================================\n");
+    console_puts("Environment history:\n\n");
 
     for (unsigned int i = 0; i < count; i++)
     {
         console_puts("[");
         console_put_uint(i);
-        console_puts("] tick=");
-        console_put_u64(samples[i].tick);
+        console_puts("] uptime: ");
+        timer_print_timestamp(samples[i].tick);
 
-        console_puts(" pressure=");
+        console_puts(" pres: ");
         shell_print_centi(samples[i].pressure_centi_hpa);
-        console_puts("hPa");
+        console_puts(" hPa");
 
-        console_puts(" humidity=");
+        console_puts(" hum: ");
         shell_print_centi(samples[i].humidity_centi_percent);
-        console_puts("%");
+        console_puts(" %");
 
-        console_puts(" temperature=");
+        console_puts(" temp: ");
         shell_print_centi(samples[i].temperature_centi_c);
+        console_puts(" ");
+        console_putc((char)0xB0);
         console_puts("C\n");
     }
+    console_puts("====================================================================\n");
 }
 
 /*

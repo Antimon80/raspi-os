@@ -49,24 +49,10 @@ static void env_log_sensor_failure(unsigned int *counter, const char *message)
     }
 }
 
-static void env_log_sensor_recovery(unsigned int *counter, const char *message)
-{
-    if (!counter || !message)
-    {
-        return;
-    }
-
-    if (*counter > 0u)
-    {
-        log_append_current_task(message, (int)*counter);
-        *counter = 0;
-    }
-}
-
 /*
- * Register the task ID.
+ * Set the task ID.
  */
-void env_register_task_id(int id)
+void env_set_task_id(int id)
 {
     env_task_id = id;
 }
@@ -246,10 +232,8 @@ unsigned int env_get_history(env_sample_t *out, unsigned int max)
  */
 void env_task(void)
 {
-    int task_id = scheduler_current_task_id();
+    env_task_id = scheduler_current_task_id();
     env_error_state_t errors = {0, 0, 0};
-
-    env_register_task_id(task_id);
 
     env_sample_t sample;
     env_init();

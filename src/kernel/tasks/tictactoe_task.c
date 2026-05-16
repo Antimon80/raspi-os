@@ -841,8 +841,8 @@ static void ttt_render_hdmi(const ttt_game_t *game, int clear)
         ttt_render_result_hdmi(game);
     }
 
-    while (hdmi_present(32u)){
-
+    while (hdmi_present(32u))
+    {
     }
 }
 
@@ -940,6 +940,35 @@ static void ttt_handle_play_joy(ttt_game_t *game, joy_event_t event)
     {
         ttt_apply_move(game, game->cursor);
     }
+}
+
+/*
+ * Return the registered task ID, or -1 if none exists.
+ */
+int ttt_get_task_id(void)
+{
+    return ttt_task_id;
+}
+
+void ttt_cleanup_resources(void)
+{
+    joystick_clear_event_handler();
+
+    if (ttt_hdmi_enabled)
+    {
+        hdmi_reset_console();
+        hdmi_release(ttt_task_id);
+        hdmi_console_enable(1);
+    }
+
+    if (ttt_led_enabled)
+    {
+        led_release(ttt_task_id);
+    }
+
+    ttt_led_enabled = 0;
+    ttt_hdmi_enabled = 0;
+    ttt_task_id = -1;
 }
 
 /*
@@ -1088,20 +1117,5 @@ void tictactoe_task(void)
         task_sleep(1);
     }
 
-    joystick_clear_event_handler();
-    if (ttt_hdmi_enabled)
-    {
-        hdmi_reset_console();
-        hdmi_release(ttt_task_id);
-        hdmi_console_enable(1);
-    }
-
-    if (ttt_led_enabled)
-    {
-        led_release(ttt_task_id);
-    }
-
-    ttt_led_enabled = 0;
-    ttt_hdmi_enabled = 0;
-    ttt_task_id = -1;
+    ttt_cleanup_resources();
 }

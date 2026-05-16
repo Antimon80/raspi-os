@@ -23,7 +23,7 @@ typedef struct
 } env_sample_t;
 
 void env_init(void);
-void env_register_task_id(int id);
+void env_set_task_id(int id);
 int env_get_task_id(void);
 int env_is_running(void);
 void env_set_running(int running);

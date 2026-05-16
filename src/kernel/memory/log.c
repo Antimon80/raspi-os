@@ -82,32 +82,6 @@ static void log_drop_oldest(task_log_t *log)
     }
 }
 
-static void log_print_two_digits(unsigned int value)
-{
-    if (value < 10u)
-    {
-        console_puts("0");
-    }
-
-    console_put_uint(value);
-}
-
-static void log_print_timestamp(uint64_t tick)
-{
-    uint64_t seconds = timer_ticks_to_seconds(tick);
-    unsigned int hours = (unsigned int)(seconds / 3600u);
-    unsigned int minutes = (unsigned int)((seconds / 60u) % 60u);
-    unsigned int secs = (unsigned int)(seconds % 60u);
-
-    console_puts("[");
-    log_print_two_digits(hours);
-    console_puts(":");
-    log_print_two_digits(minutes);
-    console_puts(":");
-    log_print_two_digits(secs);
-    console_puts("] ");
-}
-
 /*
  * Initialize all task log lists.
  */
@@ -246,7 +220,7 @@ void log_dump_task_id(int task_id)
 
     while (current)
     {
-        log_print_timestamp(current->tick);
+        timer_print_timestamp(current->tick);
 
         if (current->message)
         {

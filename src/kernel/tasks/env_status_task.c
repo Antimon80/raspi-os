@@ -28,9 +28,9 @@
 static int env_status_task_id = -1;
 
 /*
- * Register the environment LED status task ID.
+ * Set the environment LED status task ID.
  */
-void env_status_register_task_id(int id)
+void env_status_set_task_id(int id)
 {
     env_status_task_id = id;
 }
@@ -149,23 +149,21 @@ static void env_status_render_frame(led_frame_t *frame, const env_sample_t *samp
  */
 void env_status_task(void)
 {
-    int task_id = scheduler_current_task_id();
-
-    env_status_register_task_id(task_id);
+     env_status_task_id = scheduler_current_task_id();
 
     if (!env_is_running())
     {
         console_puts("envled: env_task is not running\n");
-        env_status_register_task_id(-1);
+        env_status_set_task_id(-1);
         return;
     }
 
     console_puts("envled: started\n");
 
-    if (led_acquire(task_id) < 0)
+    if (led_acquire(env_status_task_id) < 0)
     {
         console_puts("envled: LED matrix already in use\n");
-        env_status_register_task_id(-1);
+        env_status_set_task_id(-1);
         return;
     }
 
@@ -177,21 +175,18 @@ void env_status_task(void)
         if (!env_is_running())
         {
             console_puts("envled: stopping because env_task is not running\n");
-            led_submit_clear_frame(task_id);
-            led_release(task_id);
-            env_status_register_task_id(-1);
+            led_submit_clear_frame(env_status_task_id);
+            led_release(env_status_task_id);
+            env_status_set_task_id(-1);
             return;
         }
 
         if (env_get_latest(&sample) == 0)
         {
             env_status_render_frame(&frame, &sample);
-            led_submit_frame(task_id, &frame);
+            led_submit_frame(env_status_task_id, &frame);
         }
 
         task_sleep(ENV_STATUS_REFRESH_TICKS);
     }
-
-    led_release(task_id);
-    env_status_register_task_id(-1);
 }

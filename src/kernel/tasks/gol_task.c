@@ -4,6 +4,7 @@
 #include "kernel/io/console.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
+#include "kernel/memory/log.h"
 #include "rpi4/drivers/uart.h"
 #include <stdint.h>
 
@@ -14,7 +15,6 @@
 #define RESEED_AFTER_FRAMES 120
 
 static int gol_task_id = -1;
-
 /*
  * A cell is alive if age > 0.
  * Age is used both for state and for color rendering.
@@ -340,7 +340,7 @@ static led_matrix_color_t gol_color_for_age(uint8_t age)
 /*
  * Render the current life grid to the LED matrix.
  */
-static void gol_render(void)
+static int gol_render(void)
 {
     led_frame_t frame;
     int task_id = gol_get_task_id();
@@ -353,13 +353,39 @@ static void gol_render(void)
         }
     }
 
-    led_submit_frame(task_id, &frame);
+    return led_submit_frame(task_id, &frame);
+}
+
+static void gol_render_logged(unsigned int *submit_failures)
+{
+    if (!submit_failures)
+    {
+        return;
+    }
+
+    if (gol_render() < 0)
+    {
+        (*submit_failures)++;
+
+        if (*submit_failures == 1u || (*submit_failures % 10) == 0u)
+        {
+            log_append_current_task("gol: frame submit failed count=", (int)*submit_failures);
+        }
+
+        return;
+    }
+
+    if (*submit_failures > 0u)
+    {
+        log_append_current_task("gol: frame submit recovered after failures=", (int)*submit_failures);
+        *submit_failures = 0;
+    }
 }
 
 /*
- * Register the task ID.
+ * Set the task ID.
  */
-void gol_register_task_id(int id)
+void gol_set_task_id(int id)
 {
     gol_task_id = id;
 }
@@ -377,23 +403,27 @@ int gol_get_task_id(void)
  */
 void gol_task(void)
 {
-    int task_id = scheduler_current_task_id();
+    gol_task_id = scheduler_current_task_id();
+    unsigned int submit_failures = 0;
 
-    gol_register_task_id(task_id);
 
     console_puts("gol: started\n");
+    log_append_current_task("gol: started", 0);
 
-    if (led_acquire(task_id) < 0)
+    if (led_acquire(gol_task_id) < 0)
     {
         console_puts("gol: LED matrix already in use\n");
-        gol_register_task_id(-1);
+        log_append_current_task("gol: LED acquire failed", 0);
+        gol_task_id = -1;
         return;
     }
+
+    log_append_current_task("gol: LED acquired", 0);
 
     rng_state ^= (uint32_t)timer_get_ticks();
 
     gol_seed_pattern();
-    gol_render();
+    gol_render_logged(&submit_failures);
 
     while (1)
     {
@@ -402,8 +432,19 @@ void gol_task(void)
         gol_step();
         generation_count++;
 
-        if (!gol_any_alive() || gol_grids_equal(current, next) || generation_count >= RESEED_AFTER_FRAMES)
+        if (!gol_any_alive())
         {
+            log_append_current_task("gol: reseed no live cells at generation=", (int)generation_count);
+            gol_seed_pattern();
+        }
+        else if (gol_grids_equal(current, next))
+        {
+            log_append_current_task("gol: reseed stable pattern at generation=", (int)generation_count);
+            gol_seed_pattern();
+        }
+        else if (generation_count >= RESEED_AFTER_FRAMES)
+        {
+            log_append_current_task("gol: reseed max generation=", (int)generation_count);
             gol_seed_pattern();
         }
         else
@@ -411,9 +452,6 @@ void gol_task(void)
             gol_copy_next_to_current();
         }
 
-        gol_render();
+        gol_render_logged(&submit_failures);
     }
-
-    led_release(task_id);
-    gol_register_task_id(-1);
 }
