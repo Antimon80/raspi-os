@@ -21,9 +21,27 @@ typedef struct
     unsigned int write_index;
     unsigned int count;
     uint64_t last_history_tick;
+    int running;
 } env_store_t;
 
 static env_store_t env_store;
+static int env_task_id = -1;
+
+/*
+ * Register the task ID.
+ */
+void env_register_task_id(int id)
+{
+    env_task_id = id;
+}
+
+/*
+ * Return the registered task ID, or -1 if none exists.
+ */
+int env_get_task_id(void)
+{
+    return env_task_id;
+}
 
 /*
  * Initialize the environment sample store.
@@ -38,8 +56,38 @@ void env_init(void)
     env_store.count = 0;
     env_store.latest.valid = 0;
     env_store.last_history_tick = 0;
+    env_store.running = 0;
 
     irq_enable();
+}
+
+void env_set_running(int running)
+{
+    irq_disable();
+    env_store.running = running ? 1 : 0;
+    irq_enable();
+}
+
+int env_is_running(void)
+{
+    int running;
+
+    irq_disable();
+    running = env_store.running;
+    irq_enable();
+
+    return running;
+}
+
+int env_has_live_data(void)
+{
+    int result;
+
+    irq_disable();
+    result = env_store.running && env_store.latest.valid;
+    irq_enable();
+
+    return result;
 }
 
 /*
@@ -92,7 +140,7 @@ int env_get_latest(env_sample_t *out)
 
     irq_disable();
 
-    if (!env_store.latest.valid)
+    if (!env_store.running || !env_store.latest.valid)
     {
         irq_enable();
         return -1;
@@ -124,7 +172,7 @@ unsigned int env_get_history(env_sample_t *out, unsigned int max)
 
     irq_disable();
 
-    if (env_store.count == 0)
+    if (!env_store.running || env_store.count == 0)
     {
         irq_enable();
         return 0;
@@ -135,7 +183,7 @@ unsigned int env_get_history(env_sample_t *out, unsigned int max)
         max = env_store.count;
     }
 
-    start = (env_store.write_index + ENV_HISTORY_SIZE - env_store.count) % ENV_HISTORY_SIZE;
+    start = (env_store.write_index + ENV_HISTORY_SIZE - max) % ENV_HISTORY_SIZE;
 
     for (unsigned int i = 0; i < max; i++)
     {
@@ -162,8 +210,13 @@ unsigned int env_get_history(env_sample_t *out, unsigned int max)
  */
 void env_task(void)
 {
+    int task_id = scheduler_current_task_id();
+
+    env_register_task_id(task_id);
+
     env_sample_t sample;
     env_init();
+    env_set_running(1);
 
     i2c_bus_lock();
 
@@ -179,15 +232,17 @@ void env_task(void)
 
     if (lps_ok < 0)
     {
-        console_puts("env: LPS25H init failed\n");
-        log_append_current_task("env: LPS25H init failed", 0);
+        env_set_running(0);
+        console_puts("No pressure sensor available\n");
+        log_append_current_task("env: LPS25H init failed - no pressure sensor available", 0);
         return;
     }
 
     if (hts_ok < 0)
     {
-        console_puts("env: HTS221 init failed\n");
-        log_append_current_task("env: HTS221 init failed", 0);
+        env_set_running(0);
+        console_puts("No humidity sensor available\n");
+        log_append_current_task("env: HTS221 init failed - no humidity sensor available", 0);
         return;
     }
 

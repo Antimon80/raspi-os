@@ -268,8 +268,14 @@ void shell_cmd_start_arg(const char *name)
         gol_register_task_id(id);
     }
 
+    if (str_equals(name, "env"))
+    {
+        env_register_task_id(id);
+    }
+
     if (str_equals(name, "envled"))
     {
+
         env_status_register_task_id(id);
     }
 
@@ -302,6 +308,11 @@ void shell_cmd_stop_id(int id)
     {
         console_puts("failed to stop task\n");
         return;
+    }
+
+    if (id == env_get_task_id())
+    {
+        env_set_running(0);
     }
 
     if (id == gol_get_task_id())

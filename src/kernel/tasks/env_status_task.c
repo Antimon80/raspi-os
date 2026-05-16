@@ -153,6 +153,13 @@ void env_status_task(void)
 
     env_status_register_task_id(task_id);
 
+    if (!env_is_running())
+    {
+        console_puts("envled: env_task is not running\n");
+        env_status_register_task_id(-1);
+        return;
+    }
+
     console_puts("envled: started\n");
 
     if (led_acquire(task_id) < 0)
