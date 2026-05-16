@@ -2,6 +2,7 @@
 #include "kernel/irq.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
+#include "kernel/memory/log.h"
 #include "rpi4/hdmi/hdmi.h"
 
 #define HDMI_CONSOLE_BUFFER_SIZE 4096
@@ -27,6 +28,9 @@ static char hdmi_buffer[HDMI_CONSOLE_BUFFER_SIZE];
 static unsigned int hdmi_head = 0;
 static unsigned int hdmi_tail = 0;
 static unsigned int hdmi_count = 0;
+
+static unsigned int hdmi_overflow_count = 0;
+static unsigned int hdmi_overflow_since_last_log = 0;
 
 /*
  * Task ID of the dedicated HDMI console renderer.
@@ -105,6 +109,8 @@ void hdmi_console_init(void)
     hdmi_count = 0;
     hdmi_console_task_id = -1;
     hdmi_console_enabled = 0;
+    hdmi_overflow_count = 0;
+    hdmi_overflow_since_last_log = 0;
 
     irq_enable();
 }
@@ -136,6 +142,11 @@ void hdmi_console_enable(int enabled)
     }
 
     irq_enable();
+
+    if (hdmi_console_task_id >= 0)
+    {
+        log_append_task_id(hdmi_console_task_id, enabled ? "hdmi_console: enabled" : "hdmi_console: disabled", 0);
+    }
 }
 
 /*
@@ -180,6 +191,14 @@ int hdmi_console_enqueue(char c)
     {
         hdmi_tail = (hdmi_tail + 1u) % HDMI_CONSOLE_BUFFER_SIZE;
         hdmi_count--;
+
+        hdmi_overflow_count++;
+        hdmi_overflow_since_last_log++;
+
+        if (hdmi_overflow_since_last_log == 1u || (hdmi_overflow_since_last_log % 64u) == 0u)
+        {
+            log_append_task_id(hdmi_console_task_id, "hdmi_console: dropped chars count=", (int)hdmi_overflow_since_last_log);
+        }
     }
 
     hdmi_buffer[hdmi_head] = c;
@@ -208,6 +227,8 @@ void hdmi_console_task(void)
     {
         hdmi_console_task_id = scheduler_current_task_id();
     }
+
+    log_append_current_task("hdmi_console: renderer started", 0);
 
     while (1)
     {

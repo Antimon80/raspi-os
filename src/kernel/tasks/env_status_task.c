@@ -174,6 +174,15 @@ void env_status_task(void)
         env_sample_t sample;
         led_frame_t frame;
 
+        if (!env_is_running())
+        {
+            console_puts("envled: stopping because env_task is not running\n");
+            led_submit_clear_frame(task_id);
+            led_release(task_id);
+            env_status_register_task_id(-1);
+            return;
+        }
+
         if (env_get_latest(&sample) == 0)
         {
             env_status_render_frame(&frame, &sample);

@@ -2,6 +2,7 @@
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
 #include "kernel/io/console.h"
+#include "kernel/memory/log.h"
 #include "kernel/irq.h"
 #include "sensehat/led_matrix.h"
 #include "rpi4/drivers/uart.h"
@@ -116,6 +117,8 @@ int led_submit_clear_frame(int task_id)
 void led_task(void)
 {
     led_frame_t frame;
+    unsigned int present_failures = 0;
+    unsigned int consecutive_present_failures = 0;
 
     if (led_task_id < 0)
     {
@@ -125,6 +128,7 @@ void led_task(void)
     if (led_matrix_init() < 0)
     {
         console_puts("led task: matrix init failed\n");
+        log_append_current_task("led: matrix init failed", 0);
 
         while (1)
         {
@@ -133,6 +137,7 @@ void led_task(void)
     }
 
     console_puts("led task: matrix init OK\n");
+    log_append_current_task("led: matrix init OK", 0);
 
     while (1)
     {
@@ -162,7 +167,21 @@ void led_task(void)
 
         if (led_matrix_render_frame(&frame) < 0)
         {
+            present_failures++;
+            consecutive_present_failures++;
+
+            if (consecutive_present_failures == 1u || (consecutive_present_failures % 10u) == 0u)
+            {
+                log_append_current_task("led_ present failed count=", (int)consecutive_present_failures);
+            }
             task_sleep(2);
+            continue;
+        }
+
+        if (consecutive_present_failures > 0u)
+        {
+            log_append_current_task("led: present recovered after failures=", (int)consecutive_present_failures);
+            consecutive_present_failures = 0;
         }
     }
 }

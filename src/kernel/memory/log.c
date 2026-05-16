@@ -3,6 +3,7 @@
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
 #include "kernel/io/console.h"
+#include "kernel/timer.h"
 #include "rpi4/drivers/uart.h"
 #include "util/string.h"
 
@@ -17,6 +18,7 @@ typedef enum
 typedef struct log_entry
 {
     log_entry_type_t type;
+    uint64_t tick;
     char *message;
     int value;
     struct log_entry *next;
@@ -80,6 +82,32 @@ static void log_drop_oldest(task_log_t *log)
     }
 }
 
+static void log_print_two_digits(unsigned int value)
+{
+    if (value < 10u)
+    {
+        console_puts("0");
+    }
+
+    console_put_uint(value);
+}
+
+static void log_print_timestamp(uint64_t tick)
+{
+    uint64_t seconds = timer_ticks_to_seconds(tick);
+    unsigned int hours = (unsigned int)(seconds / 3600u);
+    unsigned int minutes = (unsigned int)((seconds / 60u) % 60u);
+    unsigned int secs = (unsigned int)(seconds % 60u);
+
+    console_puts("[");
+    log_print_two_digits(hours);
+    console_puts(":");
+    log_print_two_digits(minutes);
+    console_puts(":");
+    log_print_two_digits(secs);
+    console_puts("] ");
+}
+
 /*
  * Initialize all task log lists.
  */
@@ -137,6 +165,8 @@ int log_append_task_id(int task_id, const char *message, int value)
         return -1;
     }
 
+    entry->type = message ? LOG_ENTRY_TEXT : LOG_ENTRY_INT;
+    entry->tick = timer_get_ticks();
     entry->message = copy;
     entry->value = value;
     entry->next = 0;
@@ -216,6 +246,8 @@ void log_dump_task_id(int task_id)
 
     while (current)
     {
+        log_print_timestamp(current->tick);
+
         if (current->message)
         {
             console_puts(current->message);

@@ -24,8 +24,44 @@ typedef struct
     int running;
 } env_store_t;
 
+typedef struct
+{
+    unsigned int pressure_failures;
+    unsigned int humidity_failures;
+    unsigned int temperature_failures;
+} env_error_state_t;
+
 static env_store_t env_store;
 static int env_task_id = -1;
+
+static void env_log_sensor_failure(unsigned int *counter, const char *message)
+{
+    if (!counter || !message)
+    {
+        return;
+    }
+
+    (*counter)++;
+
+    if (*counter == 1u || (*counter % 10u) == 0u)
+    {
+        log_append_current_task(message, (int)*counter);
+    }
+}
+
+static void env_log_sensor_recovery(unsigned int *counter, const char *message)
+{
+    if (!counter || !message)
+    {
+        return;
+    }
+
+    if (*counter > 0u)
+    {
+        log_append_current_task(message, (int)*counter);
+        *counter = 0;
+    }
+}
 
 /*
  * Register the task ID.
@@ -211,12 +247,12 @@ unsigned int env_get_history(env_sample_t *out, unsigned int max)
 void env_task(void)
 {
     int task_id = scheduler_current_task_id();
+    env_error_state_t errors = {0, 0, 0};
 
     env_register_task_id(task_id);
 
     env_sample_t sample;
     env_init();
-    env_set_running(1);
 
     i2c_bus_lock();
 
@@ -246,6 +282,8 @@ void env_task(void)
         return;
     }
 
+    env_set_running(1);
+
     console_puts("env: sensors init OK\n");
     log_append_current_task("env: sensors init OK", 0);
 
@@ -264,21 +302,21 @@ void env_task(void)
 
         if (pressure_ok < 0)
         {
-            log_append_current_task("env: pressure read failed", 0);
+            env_log_sensor_failure(&errors.pressure_failures, "env: pressure read failed count=");
             task_sleep(ENV_SAMPLE_INTERVAL_TICKS);
             continue;
         }
 
         if (humidity_ok < 0)
         {
-            log_append_current_task("env: humidity read failed", 0);
+            env_log_sensor_failure(&errors.humidity_failures, "env: humidity read failed count=");
             task_sleep(ENV_SAMPLE_INTERVAL_TICKS);
             continue;
         }
 
         if (temperature_ok < 0)
         {
-            log_append_current_task("env: temperature read failed", 0);
+            env_log_sensor_failure(&errors.temperature_failures, "env: temperature read failed count=");
             task_sleep(ENV_SAMPLE_INTERVAL_TICKS);
             continue;
         }

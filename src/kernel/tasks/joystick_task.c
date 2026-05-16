@@ -2,6 +2,7 @@
 #include "kernel/tasks/joystick_task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
+#include "kernel/memory/log.h"
 #include "kernel/irq.h"
 #include "sensehat/joystick.h"
 #include "rpi4/drivers/uart.h"
@@ -29,16 +30,19 @@ int joystick_set_event_handler(joystick_event_handler_t handler)
 {
     if (!handler)
     {
+        log_append_current_task("joystick: handler registration failed", 0);
         return -1;
     }
 
     joystick_event_handler = handler;
+    log_append_current_task("joystick: custom handler registered", 0);
     return 0;
 }
 
 void joystick_clear_event_handler(void)
 {
     joystick_event_handler = 0;
+    log_append_current_task("joystick: custom event handler cleared", 0);
 }
 
 /*
@@ -53,11 +57,15 @@ void joystick_task(void)
 {
     if (joystick_init() < 0)
     {
+        log_append_current_task("joystick: init failed", 0);
+
         while (1)
         {
             task_block_current();
         }
     }
+
+    log_append_current_task("joystick: init OK", 0);
 
     joy_menu_init();
 

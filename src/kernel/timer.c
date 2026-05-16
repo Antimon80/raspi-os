@@ -4,14 +4,7 @@
 
 static volatile uint64_t system_ticks = 0;
 static uint32_t timer_interval = 0;
-
-/*
- * Return the current system tick counter.
- */
-uint64_t timer_get_ticks(void)
-{
-    return system_ticks;
-}
+static uint32_t timer_tick_hz = 0;
 
 /*
  * Wake all sleeping task whose wakeup time has reached.
@@ -36,6 +29,29 @@ static void timer_wake_sleeping_tasks(uint64_t now)
 }
 
 /*
+ * Return the current system tick counter.
+ */
+uint64_t timer_get_ticks(void)
+{
+    return system_ticks;
+}
+
+uint32_t timer_get_tick_hz(void)
+{
+    return timer_tick_hz;
+}
+
+uint64_t timer_ticks_to_seconds(uint64_t ticks)
+{
+    if (timer_tick_hz == 0)
+    {
+        return 0;
+    }
+
+    return ticks / timer_tick_hz;
+}
+
+/*
  * Initialize the generic timer to generate periodic tick interrupts.
  */
 void timer_init(uint32_t tick_hz)
@@ -46,6 +62,8 @@ void timer_init(uint32_t tick_hz)
     {
         return;
     }
+
+    timer_tick_hz = tick_hz;
 
     asm volatile("mrs %0, cntfrq_el0" : "=r"(cntfrq));
 

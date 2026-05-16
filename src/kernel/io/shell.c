@@ -234,6 +234,7 @@ void shell_cmd_start_arg(const char *name)
     if (!name || !*name)
     {
         console_puts("missing task name\n");
+        log_append_current_task("shell: start failed missing task name", 0);
         return;
     }
 
@@ -242,6 +243,7 @@ void shell_cmd_start_arg(const char *name)
     if (!entry)
     {
         console_puts("unknown task name\n");
+        log_append_current_task("shell: start failed unknown task", 0);
         return;
     }
 
@@ -252,6 +254,15 @@ void shell_cmd_start_arg(const char *name)
         console_puts("task already exists with id ");
         console_put_uint((unsigned int)existing);
         console_puts("\n");
+
+        log_append_current_task("shell: start failed task already exists id=", existing);
+        return;
+    }
+
+    if (str_equals(name, "envled") && !env_is_running())
+    {
+        console_puts("envled: env_task is not running\n");
+        log_append_current_task("shell: start envled denied because env is not running", 0);
         return;
     }
 
@@ -260,6 +271,7 @@ void shell_cmd_start_arg(const char *name)
     if (id < 0)
     {
         console_puts("failed to create task\n");
+        log_append_current_task("shell: task_create failed", 0);
         return;
     }
 
@@ -275,13 +287,14 @@ void shell_cmd_start_arg(const char *name)
 
     if (str_equals(name, "envled"))
     {
-
         env_status_register_task_id(id);
     }
 
     console_puts("task started with id ");
     console_put_uint((unsigned int)id);
     console_puts("\n");
+
+    log_append_current_task("shell: task started id=", id);
 }
 
 /*
@@ -295,41 +308,49 @@ void shell_cmd_stop_id(int id)
     if (!task || task->state == UNUSED)
     {
         console_puts("task not found\n");
+        log_append_current_task("shell: sotp failed task not found id=", id);
         return;
     }
 
     if (task->flag & TASK_FLAG_SYSTEM)
     {
         console_puts("refusing to stop system task\n");
+        log_append_current_task("shell: stop denied system task id=", id);
         return;
     }
 
     if (task_request_stop(id) < 0)
     {
         console_puts("failed to stop task\n");
+        log_append_current_task("shell: stop request failed id=", id);
         return;
     }
 
     if (id == env_get_task_id())
     {
         env_set_running(0);
+        log_append_current_task("shell: env marked not running id=", id);
     }
 
     if (id == gol_get_task_id())
     {
         led_release(id);
         gol_register_task_id(-1);
+        log_append_current_task("shell: released LED for gol id=", id);
     }
 
     if (id == env_status_get_task_id())
     {
         led_release(id);
         env_status_register_task_id(-1);
+        log_append_current_task("shell: released LED for envled id=", id);
     }
 
     console_puts("stop requested for task ");
     console_put_uint((unsigned int)id);
     console_puts("\n");
+
+    log_append_current_task("shell: stop requested id=", id);
 }
 
 /*
@@ -489,7 +510,7 @@ static void shell_cmd_env(void)
 
     console_puts(" temperature: ");
     shell_print_centi(sample.temperature_centi_c);
-    console_puts(" C\n");
+    console_puts(" °C\n");
 
     console_puts(" tick: ");
     console_put_u64(sample.tick);
