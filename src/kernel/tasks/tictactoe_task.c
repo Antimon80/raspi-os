@@ -839,6 +839,10 @@ static void ttt_render_hdmi(const ttt_game_t *game, int clear)
     {
         ttt_render_result_hdmi(game);
     }
+
+    while (hdmi_flush_dirty(32u)){
+
+    }
 }
 
 static void ttt_render_outputs(const ttt_game_t *game, int clear_hdmi)

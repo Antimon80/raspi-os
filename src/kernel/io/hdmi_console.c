@@ -5,7 +5,9 @@
 #include "rpi4/hdmi.h"
 
 #define HDMI_CONSOLE_BUFFER_SIZE 4096
-#define HDMI_CHARS_PER_SLICE 64
+
+#define HDMI_INPUT_CHARS_PER_SLICE 128
+#define HDMI_DIRTY_CELLS_PER_SLICE 16
 
 /*
  * Software queue for asynchronous HDMI console mirroring.
@@ -50,8 +52,10 @@ static int hdmi_console_enabled = 0;
  * does not perform locking itself so the renderer can dequeue multiple
  * characters in one protected section.
  */
-static int hdmi_console_dequeue_irq_disabled(char *out){
-    if(!out || hdmi_count == 0){
+static int hdmi_console_dequeue_irq_disabled(char *out)
+{
+    if (!out || hdmi_count == 0)
+    {
         return -1;
     }
 
@@ -69,15 +73,18 @@ static int hdmi_console_dequeue_irq_disabled(char *out){
  * from an already IRQ-disabled section and prevents accidentally re-enabling
  * IRQs inside such a critical section.
  */
-static void hdmi_console_wake_task_irq_disabled(void){
+static void hdmi_console_wake_task_irq_disabled(void)
+{
     task_t *task;
 
-    if(hdmi_console_task_id < 0){
+    if (hdmi_console_task_id < 0)
+    {
         return;
     }
 
     task = task_get(hdmi_console_task_id);
-    if(task && task->state == BLOCKED){
+    if (task && task->state == BLOCKED)
+    {
         task->state = READY;
     }
 }
@@ -89,7 +96,8 @@ static void hdmi_console_wake_task_irq_disabled(void){
  * to run. The mirror starts disabled; enabling is done explicitly after HDMI
  * setup and task registration.
  */
-void hdmi_console_init(void){
+void hdmi_console_init(void)
+{
     irq_disable();
 
     hdmi_head = 0;
@@ -104,7 +112,8 @@ void hdmi_console_init(void){
 /*
  * Register the task ID of the dedicated HDMI console renderer task.
  */
-void hdmi_console_register_task_id(int id){
+void hdmi_console_register_task_id(int id)
+{
     irq_disable();
     hdmi_console_task_id = id;
     irq_enable();
@@ -116,11 +125,13 @@ void hdmi_console_register_task_id(int id){
  * Disabling does not affect UART output and does not clear queued characters.
  * Enabling wakes the renderer so already queued output can be processed.
  */
-void hdmi_console_enable(int enabled){
+void hdmi_console_enable(int enabled)
+{
     irq_disable();
     hdmi_console_enabled = enabled ? 1 : 0;
 
-    if(hdmi_console_enabled){
+    if (hdmi_console_enabled)
+    {
         hdmi_console_wake_task_irq_disabled();
     }
 
@@ -130,7 +141,8 @@ void hdmi_console_enable(int enabled){
 /*
  * Return non-zero if HDMI console mirroring is currently enabled.
  */
-int hdmi_console_is_enabled(void){
+int hdmi_console_is_enabled(void)
+{
     int enabled;
 
     irq_disable();
@@ -149,19 +161,23 @@ int hdmi_console_is_enabled(void){
  * On overflow, the oldest HDMI-only character is dropped. UART output is
  * unaffected, so the serial console remains complete and responsive.
  */
-int hdmi_console_enqueue(char c){
-    if(!hdmi_console_enabled || hdmi_console_task_id < 0){
+int hdmi_console_enqueue(char c)
+{
+    if (!hdmi_console_enabled || hdmi_console_task_id < 0)
+    {
         return -1;
     }
 
     irq_disable();
 
-    if(!hdmi_console_enabled || hdmi_console_task_id < 0){
+    if (!hdmi_console_enabled || hdmi_console_task_id < 0)
+    {
         irq_enable();
         return -1;
     }
 
-    if(hdmi_count == HDMI_CONSOLE_BUFFER_SIZE){
+    if (hdmi_count == HDMI_CONSOLE_BUFFER_SIZE)
+    {
         hdmi_tail = (hdmi_tail + 1u) % HDMI_CONSOLE_BUFFER_SIZE;
         hdmi_count--;
     }
@@ -184,23 +200,28 @@ int hdmi_console_enqueue(char c){
  * Rendering is intentionally sliced so large text dumps cannot monopolize
  * the CPU in the cooperative scheduler.
  */
-void hdmi_console_task(void){
+void hdmi_console_task(void)
+{
     char c;
-    int rendered;
 
-    if(hdmi_console_task_id < 0){
+    if (hdmi_console_task_id < 0)
+    {
         hdmi_console_task_id = scheduler_current_task_id();
     }
 
-    while(1){
-        rendered = 0;
+    while (1)
+    {
+        int processed_chars = 0;
+        int has_more_dirty = 0;
 
         irq_disable();
 
-        if(!hdmi_console_enabled || hdmi_count == 0){
+        if (!hdmi_console_enabled)
+        {
             task_t *current = task_get(scheduler_current_task_id());
 
-            if(!current){
+            if (!current)
+            {
                 irq_enable();
                 scheduler_yield();
                 continue;
@@ -212,13 +233,30 @@ void hdmi_console_task(void){
             continue;
         }
 
-        while(rendered < HDMI_CHARS_PER_SLICE && hdmi_console_dequeue_irq_disabled(&c) == 0){
+        while (processed_chars < HDMI_INPUT_CHARS_PER_SLICE && hdmi_console_dequeue_irq_disabled(&c) == 0)
+        {
             irq_enable();
 
             hdmi_putc(c);
-            rendered++;
+            processed_chars++;
 
             irq_disable();
+        }
+
+        irq_enable();
+
+        has_more_dirty = hdmi_flush_dirty(HDMI_DIRTY_CELLS_PER_SLICE);
+
+        irq_disable();
+
+        if (hdmi_count == 0 && !has_more_dirty)
+        {
+            task_t *current = task_get(scheduler_current_task_id());
+
+            if (current)
+            {
+                current->state = BLOCKED;
+            }
         }
 
         irq_enable();
