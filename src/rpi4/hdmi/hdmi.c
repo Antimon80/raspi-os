@@ -60,9 +60,9 @@
 #define BOOT_CARD_EDGE 0x001B2A3Eu
 #define BOOT_GLOW 0x000C3D69u
 
-#define HDMI_MARGIN_X 32u
-#define HDMI_MARGIN_Y 32u
-#define HDMI_PANEL_GAP 18u
+#define HDMI_MARGIN_X 10u
+#define HDMI_MARGIN_Y 10u
+#define HDMI_PANEL_GAP 10u
 #define HDMI_HEADER_H 42u
 #define HDMI_PADDING_X 20u
 #define HDMI_PADDING_Y 18u

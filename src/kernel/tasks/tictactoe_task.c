@@ -93,33 +93,34 @@ static int ttt_hdmi_enabled = 0;
 static const int ttt_lines[8][3] = {
     {0, 1, 2}, {3, 4, 5}, {6, 7, 8}, {0, 3, 6}, {1, 4, 7}, {2, 5, 8}, {0, 4, 8}, {2, 4, 6}};
 
-static void h(const char *s) { hdmi_puts(s); }
+static void h(const char *s)
+{
+    hdmi_puts(HDMI_PANE_MAIN, s);
+}
 static void hc(uint32_t fg, const char *s)
 {
-    hdmi_set_text_colors(fg, HDMI_TTT_BG);
-    hdmi_puts(s);
-    hdmi_reset_text_colors();
+    hdmi_set_text_colors(HDMI_PANE_MAIN, fg, HDMI_TTT_BG);
+    hdmi_puts(HDMI_PANE_MAIN, s);
+    hdmi_reset_text_colors(HDMI_PANE_MAIN);
 }
 
 static void ttt_hdmi_pad_line(int used)
 {
-    hdmi_set_text_colors(HDMI_TTT_STATUS, HDMI_TTT_BG);
+    hdmi_set_text_colors(HDMI_PANE_MAIN, HDMI_TTT_STATUS, HDMI_TTT_BG);
     while (used < TTT_HDMI_LINE_WIDTH)
     {
-        hdmi_putc(' ');
+        hdmi_putc(HDMI_PANE_MAIN, ' ');
         used++;
     }
-    hdmi_reset_text_colors();
+    hdmi_reset_text_colors(HDMI_PANE_MAIN);
 }
 
 static void ttt_hdmi_write_line(uint32_t row, uint32_t fg, const char *s)
 {
     int used = str_length(s);
 
-    hdmi_set_cursor(0u, row);
-    hdmi_set_text_colors(fg, HDMI_TTT_BG);
-    hdmi_puts(s);
-    hdmi_reset_text_colors();
+    hdmi_set_cursor(HDMI_PANE_MAIN, 0u, row);
+    hc(fg, s);
     ttt_hdmi_pad_line(used);
 }
 
@@ -735,7 +736,7 @@ static void ttt_render_board_hdmi(const ttt_game_t *game)
 
     for (int row = 0; row < 3; row++)
     {
-        hdmi_set_cursor(0u, 8u + (uint32_t)(row * 2));
+        hdmi_set_cursor(HDMI_PANE_MAIN, 0u, 8u + (uint32_t)(row * 2));
         used = 0;
         hc(HDMI_TTT_LINE, "|");
         used++;
@@ -768,7 +769,7 @@ static void ttt_render_menu_hdmi(const ttt_game_t *game)
 
     for (int i = 0; i < 3; i++)
     {
-        hdmi_set_cursor(0u, 6u + (uint32_t)i);
+        hdmi_set_cursor(HDMI_PANE_MAIN, 0u, 6u + (uint32_t)i);
         if (game->menu_index == i)
             hc(HDMI_TTT_CURSOR, "> ");
         else
@@ -795,7 +796,7 @@ static void ttt_render_result_hdmi(const ttt_game_t *game)
 
     for (int i = 0; i < 3; i++)
     {
-        hdmi_set_cursor(0u, 19u + (uint32_t)i);
+        hdmi_set_cursor(HDMI_PANE_MAIN, 0u, 19u + (uint32_t)i);
         if (game->result_index == i)
         {
             hc(HDMI_TTT_CURSOR, "> ");
@@ -825,7 +826,7 @@ static void ttt_render_hdmi(const ttt_game_t *game, int clear)
 
     if (clear)
     {
-        hdmi_clear_console();
+        hdmi_clear_pane(HDMI_PANE_MAIN);
     }
 
     if (game->state == TTT_STATE_MENU)
@@ -956,9 +957,15 @@ void ttt_cleanup_resources(void)
 
     if (ttt_hdmi_enabled)
     {
-        hdmi_reset_console();
-        hdmi_release(ttt_task_id);
-        hdmi_console_enable(1);
+        hdmi_console_clear_queue();
+        hdmi_clear_pane(HDMI_PANE_MAIN);
+
+        while (hdmi_present(32u))
+        {
+        }
+
+        hdmi_release_pane(HDMI_PANE_MAIN, ttt_task_id);
+        hdmi_console_clear_queue();
     }
 
     if (ttt_led_enabled)
@@ -1010,11 +1017,11 @@ void tictactoe_task(void)
         ttt_led_enabled = 1;
     }
 
-    if (hdmi_acquire(ttt_task_id) == 0)
+    if (hdmi_acquire_pane(HDMI_PANE_MAIN, ttt_task_id) == 0)
     {
         ttt_hdmi_enabled = 1;
-        hdmi_console_enable(0);
-        hdmi_reset_console();
+        hdmi_console_clear_queue();
+        hdmi_clear_pane(HDMI_PANE_MAIN);
     }
 
     if (!ttt_led_enabled && !ttt_hdmi_enabled)
@@ -1035,9 +1042,8 @@ void tictactoe_task(void)
 
         if (ttt_hdmi_enabled)
         {
-            hdmi_clear_console();
-            hdmi_release(ttt_task_id);
-            hdmi_console_enable(1);
+            hdmi_clear_pane(HDMI_PANE_MAIN);
+            hdmi_release_pane(HDMI_PANE_MAIN, ttt_task_id);
         }
 
         ttt_led_enabled = 0;

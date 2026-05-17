@@ -50,6 +50,18 @@ static int hdmi_console_task_id = -1;
 static int hdmi_console_enabled = 0;
 
 /*
+ * Remove all queued HDMI-only characters.
+ *
+ * IRQs must already be disabled by the caller.
+ */
+static void hdmi_console_clear_queue_irq_disabled(void)
+{
+    hdmi_head = 0;
+    hdmi_tail = 0;
+    hdmi_count = 0;
+}
+
+/*
  * Remove one character from the HDMI console queue.
  *
  * IRQs must already be disabled by the caller. This function intentionally
@@ -94,6 +106,21 @@ static void hdmi_console_wake_task_irq_disabled(void)
 }
 
 /*
+ * Block the current HDMI console task.
+ *
+ * IRQs must already be disabled by the caller.
+ */
+static void hdmi_console_block_current_irq_disabled(void)
+{
+    task_t *current = task_get(scheduler_current_task_id());
+
+    if (current)
+    {
+        current->state = BLOCKED;
+    }
+}
+
+/*
  * Initialize the HDMI console mirror state.
  *
  * Called during console initialization before the renderer task is expected
@@ -104,9 +131,8 @@ void hdmi_console_init(void)
 {
     irq_disable();
 
-    hdmi_head = 0;
-    hdmi_tail = 0;
-    hdmi_count = 0;
+    hdmi_console_clear_queue_irq_disabled();
+
     hdmi_console_task_id = -1;
     hdmi_console_enabled = 0;
     hdmi_overflow_count = 0;
@@ -136,7 +162,11 @@ void hdmi_console_enable(int enabled)
     irq_disable();
     hdmi_console_enabled = enabled ? 1 : 0;
 
-    if (hdmi_console_enabled)
+    if (!hdmi_console_enabled)
+    {
+        hdmi_console_clear_queue_irq_disabled();
+    }
+    else
     {
         hdmi_console_wake_task_irq_disabled();
     }
@@ -164,6 +194,19 @@ int hdmi_console_is_enabled(void)
 }
 
 /*
+ * Explicitly drop all queued HDMI-only characters.
+ *
+ * This is intended for applications that acquire HDMI_PANE_MAIN. They can clear
+ * stale console mirror output immediately after taking ownership of the pane.
+ */
+void hdmi_console_clear_queue(void)
+{
+    irq_disable();
+    hdmi_console_clear_queue_irq_disabled();
+    irq_enable();
+}
+
+/*
  * Queue one character for HDMI output.
  *
  * This function must never call hdmi_putc().
@@ -174,7 +217,7 @@ int hdmi_console_is_enabled(void)
  */
 int hdmi_console_enqueue(char c)
 {
-    if (!hdmi_console_enabled || hdmi_console_task_id < 0)
+    if (!hdmi_console_enabled || hdmi_console_task_id < 0 || !hdmi_pane_is_console_writable(HDMI_PANE_MAIN))
     {
         return -1;
     }
@@ -234,21 +277,22 @@ void hdmi_console_task(void)
     {
         int processed_chars = 0;
         int has_more_dirty = 0;
+        int main_pane_writable = hdmi_pane_is_console_writable(HDMI_PANE_MAIN);
 
         irq_disable();
 
         if (!hdmi_console_enabled)
         {
-            task_t *current = task_get(scheduler_current_task_id());
+            hdmi_console_block_current_irq_disabled();
+            irq_enable();
+            scheduler_yield();
+            continue;
+        }
 
-            if (!current)
-            {
-                irq_enable();
-                scheduler_yield();
-                continue;
-            }
-
-            current->state = BLOCKED;
+        if (!main_pane_writable)
+        {
+            hdmi_console_clear_queue_irq_disabled();
+            hdmi_console_block_current_irq_disabled();
             irq_enable();
             scheduler_yield();
             continue;
@@ -258,7 +302,11 @@ void hdmi_console_task(void)
         {
             irq_enable();
 
-            hdmi_putc(c);
+            if (hdmi_pane_is_console_writable(HDMI_PANE_MAIN))
+            {
+                hdmi_putc(HDMI_PANE_MAIN, c);
+            }
+
             processed_chars++;
 
             irq_disable();
@@ -272,12 +320,7 @@ void hdmi_console_task(void)
 
         if (hdmi_count == 0 && !has_more_dirty)
         {
-            task_t *current = task_get(scheduler_current_task_id());
-
-            if (current)
-            {
-                current->state = BLOCKED;
-            }
+            hdmi_console_block_current_irq_disabled();
         }
 
         irq_enable();

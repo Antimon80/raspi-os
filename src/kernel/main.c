@@ -37,7 +37,7 @@ void main(void)
     {
         hdmi_ok = 1;
         hdmi_show_bootscreen();
-        hdmi_reset_console();
+        hdmi_reset_panes();
     }
     else
     {

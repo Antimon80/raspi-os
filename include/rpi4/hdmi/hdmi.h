@@ -19,7 +19,7 @@ int hdmi_is_available(void);
 
 int hdmi_acquire_pane(hdmi_pane_id_t pane_id, int task_id);
 void hdmi_release_pane(hdmi_pane_id_t pane_id, int task_id);
-void hdmi_pane_is_console_writable(hdmi_pane_id_t pane_id);
+int hdmi_pane_is_console_writable(hdmi_pane_id_t pane_id);
 void hdmi_set_pane_mode(hdmi_pane_id_t pane_id, hdmi_pane_mode_t mode);
 hdmi_pane_mode_t hdmi_get_pane_mode(hdmi_pane_id_t pane_id);
 
