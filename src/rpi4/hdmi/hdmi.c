@@ -60,6 +60,14 @@
 #define BOOT_CARD_EDGE 0x001B2A3Eu
 #define BOOT_GLOW 0x000C3D69u
 
+#define HDMI_MARGIN_X 32u
+#define HDMI_MARGIN_Y 32u
+#define HDMI_PANEL_GAP 18u
+#define HDMI_HEADER_H 42u
+#define HDMI_PADDING_X 20u
+#define HDMI_PADDING_Y 18u
+#define HDMI_MENU_WIDTH 360u
+
 /*
  * One logical HDMI text cell.
  *
@@ -75,6 +83,42 @@ typedef struct
     uint8_t dirty;
 } hdmi_cell_t;
 
+typedef struct
+{
+    uint32_t frame_x;
+    uint32_t frame_y;
+    uint32_t frame_w;
+    uint32_t frame_h;
+
+    uint32_t content_x;
+    uint32_t content_y;
+    uint32_t content_w;
+    uint32_t content_h;
+
+    uint32_t columns;
+    uint32_t rows;
+
+    uint32_t cursor_x;
+    uint32_t cursor_y;
+
+    uint32_t fg;
+    uint32_t bg;
+
+    int cursor_visible;
+
+    int ansi_state;
+    uint32_t ansi_value;
+    int ansi_has_value;
+
+    int owner_task_id;
+    hdmi_pane_mode_t mode;
+
+    const char *title;
+
+    hdmi_cell_t cells[HDMI_MAX_ROWS][HDMI_MAX_COLUMNS];
+    hdmi_cell_t draw[HDMI_MAX_ROWS][HDMI_MAX_COLUMNS];
+} hdmi_pane_t;
+
 /*
  * Mailbox property messages must be 16-byte aligned.
  * The current framebuffer setup uses 35 32-bit words.
@@ -86,59 +130,52 @@ static uint32_t *framebuffer = 0;
 static uint32_t framebuffer_width = 0;
 static uint32_t framebuffer_height = 0;
 static uint32_t framebuffer_pitch = 0;
-static uint32_t console_origin_x = 0;
-static uint32_t console_origin_y = 0;
-static uint32_t console_content_width = 0;
-static uint32_t console_content_height = 0;
-static uint32_t console_columns = 0;
-static uint32_t console_rows = 0;
+
 static uint32_t status_dot_x = 0;
 static uint32_t status_dot_y = 0;
 
-/* Logical text-console state. */
-static hdmi_cell_t text_cells[HDMI_MAX_ROWS][HDMI_MAX_COLUMNS];
-static hdmi_cell_t drawn_cells[HDMI_MAX_ROWS][HDMI_MAX_COLUMNS];
-static uint32_t cursor_x = 0;
-static uint32_t cursor_y = 0;
-static uint32_t text_fg = CONSOLE_FG;
-static uint32_t text_bg = CONSOLE_PANEL;
-static int cursor_visible = 1;
+static hdmi_pane_t panes[HDMI_PANE_COUNT];
 
-/* Minimal ANSI CSI parser state. */
-static int ansi_state = 0;
-static uint32_t ansi_value = 0;
-static int ansi_has_value = 0;
-
-/* Ownership and availability state. */
-static int hdmi_owner_task_id = -1;
 static int hdmi_ready = 0;
+
+static hdmi_pane_t *hdmi_get_pane(hdmi_pane_id_t pane_id)
+{
+    if (pane_id < 0 || pane_id >= HDMI_PANE_COUNT)
+    {
+        return 0;
+    }
+
+    return &panes[pane_id];
+}
 
 /*
  * Mark one logical cell dirty.
  */
-static void hdmi_mark_cell_dirty(uint32_t column, uint32_t row)
+static void hdmi_mark_cell_dirty(hdmi_pane_t *pane, uint32_t column, uint32_t row)
 {
-    if (row >= console_rows || column >= console_columns)
+    if (!pane || row >= pane->rows || column >= pane->columns)
     {
         return;
     }
 
-    text_cells[row][column].dirty = 1u;
+    pane->cells[row][column].dirty = 1u;
 }
 
-/*
- * Mark all visible logical cells dirty.
- */
-static void hdmi_mark_all_dirty(void)
+static void hdmi_mark_pane_dirty(hdmi_pane_t *pane)
 {
     uint32_t row;
     uint32_t col;
 
-    for (row = 0u; row < console_rows; row++)
+    if (!pane)
     {
-        for (col = 0u; col < console_columns; col++)
+        return;
+    }
+
+    for (row = 0u; row < pane->rows; row++)
+    {
+        for (col = 0u; col < pane->columns; col++)
         {
-            text_cells[row][col].dirty = 1u;
+            pane->cells[row][col].dirty = 1u;
         }
     }
 }
@@ -149,64 +186,126 @@ static void hdmi_mark_all_dirty(void)
  * drawn_cells intentionally starts different from text_cells so the first flush
  * paints the complete text area.
  */
-static void hdmi_text_model_init(void)
+static void hdmi_text_model_init(hdmi_pane_t *pane, const char *title)
 {
     uint32_t row;
     uint32_t col;
+
+    if (!pane)
+    {
+        return;
+    }
+
+    pane->cursor_x = 0u;
+    pane->cursor_y = 0u;
+    pane->fg = CONSOLE_FG;
+    pane->bg = CONSOLE_PANEL;
+    pane->cursor_visible = 1;
+
+    pane->ansi_state = 0;
+    pane->ansi_value = 0u;
+    pane->ansi_has_value = 0;
+
+    pane->owner_task_id = -1;
+    pane->mode = HDMI_PANE_MODE_CONSOLE;
+    pane->title = title;
 
     for (row = 0u; row < HDMI_MAX_ROWS; row++)
     {
         for (col = 0u; col < HDMI_MAX_COLUMNS; col++)
         {
-            text_cells[row][col].ch = ' ';
-            text_cells[row][col].fg = CONSOLE_FG;
-            text_cells[row][col].bg = CONSOLE_PANEL;
-            text_cells[row][col].dirty = 1u;
+            pane->cells[row][col].ch = ' ';
+            pane->cells[row][col].fg = CONSOLE_FG;
+            pane->cells[row][col].bg = CONSOLE_PANEL;
+            pane->cells[row][col].dirty = 1u;
 
-            drawn_cells[row][col].ch = 0;
-            drawn_cells[row][col].fg = 0;
-            drawn_cells[row][col].bg = 0;
-            drawn_cells[row][col].dirty = 0;
+            pane->draw[row][col].ch = 0;
+            pane->draw[row][col].fg = 0;
+            pane->draw[row][col].bg = 0;
+            pane->draw[row][col].dirty = 0;
         }
     }
-
-    cursor_x = 0u;
-    cursor_y = 0u;
-    cursor_visible = 1;
 }
 
 /*
  * Clear only the logical text area. The static chrome remains untouched.
  */
-static void hdmi_text_model_clear(uint32_t fg, uint32_t bg)
+static void hdmi_text_model_clear(hdmi_pane_t *pane, uint32_t fg, uint32_t bg)
 {
     uint32_t row;
     uint32_t col;
 
-    for (row = 0u; row < console_rows; row++)
+    if (!pane)
     {
-        for (col = 0u; col < console_columns; col++)
+        return;
+    }
+
+    for (row = 0u; row < pane->rows; row++)
+    {
+        for (col = 0u; col < pane->columns; col++)
         {
-            text_cells[row][col].ch = ' ';
-            text_cells[row][col].fg = fg;
-            text_cells[row][col].bg = bg;
-            text_cells[row][col].dirty = 1u;
+            pane->cells[row][col].ch = ' ';
+            pane->cells[row][col].fg = fg;
+            pane->cells[row][col].bg = bg;
+            pane->cells[row][col].dirty = 1u;
         }
     }
 
-    cursor_x = 0u;
-    cursor_y = 0u;
-    cursor_visible = 1;
+    pane->cursor_x = 0u;
+    pane->cursor_y = 0u;
+    pane->cursor_visible = 1;
+    pane->ansi_state = 0;
+    pane->ansi_value = 0u;
+    pane->ansi_has_value = 0;
+}
+
+static void hdmi_configure_pane(hdmi_pane_t *pane, uint32_t frame_x, uint32_t frame_y, uint32_t frame_w, uint32_t frame_h, const char *title)
+{
+    uint32_t calculated_columns;
+    uint32_t calculated_rows;
+
+    if (!pane)
+    {
+        return;
+    }
+
+    pane->frame_x = frame_x;
+    pane->frame_y = frame_y;
+    pane->frame_w = frame_w;
+    pane->frame_h = frame_h;
+
+    pane->content_x = frame_x + HDMI_PADDING_X;
+    pane->content_y = frame_y + HDMI_HEADER_H + HDMI_PADDING_Y;
+    pane->content_w = frame_w - (HDMI_PADDING_X * 2u);
+    pane->content_h = frame_h - HDMI_HEADER_H - (HDMI_PADDING_Y * 2u) - 6u;
+
+    calculated_columns = pane->content_w / CHAR_ADVANCE_X;
+    calculated_rows = pane->content_h / CHAR_ADVANCE_Y;
+
+    if (calculated_columns > HDMI_MAX_COLUMNS)
+    {
+        calculated_columns = HDMI_MAX_COLUMNS;
+    }
+
+    if (calculated_rows > HDMI_MAX_ROWS)
+    {
+        calculated_rows = HDMI_MAX_ROWS;
+    }
+
+    pane->columns = calculated_columns;
+    pane->rows = calculated_rows;
+
+    hdmi_text_model_init(pane, title);
 }
 
 /*
  * Set a logical cell and mark it dirty only when its visible contents changed.
  */
-static void hdmi_set_cell(uint32_t column, uint32_t row, char ch, uint32_t fg, uint32_t bg)
+static void hdmi_set_cell(hdmi_pane_t *pane, uint32_t column, uint32_t row, char ch, uint32_t fg, uint32_t bg)
 {
     hdmi_cell_t *cell;
 
-    if (row >= console_rows || column >= console_columns)
+    if (!pane || row >= pane->rows || column >= pane->columns)
     {
         return;
     }
@@ -216,7 +315,7 @@ static void hdmi_set_cell(uint32_t column, uint32_t row, char ch, uint32_t fg, u
         ch = ' ';
     }
 
-    cell = &text_cells[row][column];
+    cell = &pane->cells[row][column];
 
     if (cell->ch == ch && cell->fg == fg && cell->bg == bg)
     {
@@ -235,31 +334,31 @@ static void hdmi_set_cell(uint32_t column, uint32_t row, char ch, uint32_t fg, u
  * No framebuffer pixels are copied here. The flush step will redraw dirty cells
  * in bounded slices.
  */
-static void hdmi_scroll(void)
+static void hdmi_scroll(hdmi_pane_t *pane)
 {
     uint32_t row;
     uint32_t col;
 
-    if (console_rows == 0u || console_columns == 0u)
+    if (!pane || pane->rows == 0u || pane->columns == 0u)
     {
         return;
     }
 
-    for (row = 1u; row < console_rows; row++)
+    for (row = 1u; row < pane->rows; row++)
     {
-        for (col = 0u; col < console_columns; col++)
+        for (col = 0u; col < pane->columns; col++)
         {
-            text_cells[row - 1u][col] = text_cells[row][col];
-            text_cells[row - 1u][col].dirty = 1u;
+            pane->cells[row - 1u][col] = pane->cells[row][col];
+            pane->cells[row - 1u][col].dirty = 1u;
         }
     }
 
-    for (col = 0u; col < console_columns; col++)
+    for (col = 0u; col < pane->columns; col++)
     {
-        text_cells[console_rows - 1u][col].ch = ' ';
-        text_cells[console_rows - 1u][col].fg = text_fg;
-        text_cells[console_rows - 1u][col].bg = text_bg;
-        text_cells[console_rows - 1u][col].dirty = 1u;
+        pane->cells[pane->rows - 1u][col].ch = ' ';
+        pane->cells[pane->rows - 1u][col].fg = pane->fg;
+        pane->cells[pane->rows - 1u][col].bg = pane->bg;
+        pane->cells[pane->rows - 1u][col].dirty = 1u;
     }
 }
 
@@ -267,45 +366,46 @@ static void hdmi_scroll(void)
  * Advance the logical cursor to the next line and scroll the text model if
  * needed.
  */
-static void hdmi_newline(void)
+static void hdmi_newline(hdmi_pane_t *pane)
 {
-    uint32_t old_x = cursor_x;
-    uint32_t old_y = cursor_y;
 
-    if (console_rows == 0u || console_columns == 0u)
+    if (!pane || pane->rows == 0u || pane->columns == 0u)
     {
         return;
     }
 
-    cursor_x = 0u;
-    cursor_y++;
+    uint32_t old_x = pane->cursor_x;
+    uint32_t old_y = pane->cursor_y;
 
-    if (cursor_y >= console_rows)
+    pane->cursor_x = 0u;
+    pane->cursor_y++;
+
+    if (pane->cursor_y >= pane->rows)
     {
-        hdmi_scroll();
-        cursor_y = console_rows - 1u;
+        hdmi_scroll(pane);
+        pane->cursor_y = pane->rows - 1u;
     }
 
-    hdmi_mark_cell_dirty(old_x, old_y);
-    hdmi_mark_cell_dirty(cursor_x, cursor_y);
+    hdmi_mark_cell_dirty(pane, old_x, old_y);
+    hdmi_mark_cell_dirty(pane, pane->cursor_x, pane->cursor_y);
 }
 
 /*
  * Clear the logical current line.
  */
-static void hdmi_clear_console_line(void)
+static void hdmi_clear_pane_line(hdmi_pane_t *pane)
 {
     uint32_t col;
 
-    if (cursor_y >= console_rows)
+    if (!pane || pane->cursor_y >= pane->rows)
     {
         return;
     }
 
-    for (col = 0u; col < console_columns; col++)
+    for (col = 0u; col < pane->columns; col++)
     {
-        hdmi_set_cell(col, cursor_y, ' ', text_fg, text_bg);
-        hdmi_mark_cell_dirty(col, cursor_y);
+        hdmi_set_cell(pane, col, pane->cursor_y, ' ', pane->fg, pane->bg);
+        hdmi_mark_cell_dirty(pane, col, pane->cursor_y);
     }
 }
 
@@ -317,9 +417,14 @@ static void hdmi_clear_console_line(void)
  *   ESC [ n B    cursor down
  *   ESC [ 2 K    clear entire current line
  */
-static void hdmi_handle_csi(char c)
+static void hdmi_handle_csi(hdmi_pane_t *pane, char c)
 {
-    uint32_t count = ansi_has_value ? ansi_value : 1u;
+    if (!pane)
+    {
+        return;
+    }
+
+    uint32_t count = pane->ansi_has_value ? pane->ansi_value : 1u;
 
     if (count == 0u)
     {
@@ -328,25 +433,27 @@ static void hdmi_handle_csi(char c)
 
     if (c == 'A')
     {
-        hdmi_set_cursor(cursor_x, count > cursor_y ? 0u : cursor_y - count);
+        hdmi_set_cursor(pane == &panes[HDMI_PANE_MENU] ? HDMI_PANE_MENU : HDMI_PANE_MAIN,
+                        pane->cursor_x, count > pane->cursor_y ? 0u : pane->cursor_y - count);
     }
     else if (c == 'B')
     {
-        uint32_t row = cursor_y + count;
-        if (row >= console_rows)
+        uint32_t row = pane->cursor_y + count;
+        if (row >= pane->rows)
         {
-            row = console_rows - 1u;
+            row = pane->rows - 1u;
         }
-        hdmi_set_cursor(cursor_x, row);
+        hdmi_set_cursor(pane == &panes[HDMI_PANE_MENU] ? HDMI_PANE_MENU : HDMI_PANE_MAIN,
+                        pane->cursor_x, row);
     }
-    else if (c == 'K' && ansi_value == 2u)
+    else if (c == 'K' && pane->ansi_value == 2u)
     {
-        hdmi_clear_console_line();
+        hdmi_clear_pane_line(pane);
     }
 
-    ansi_state = 0;
-    ansi_value = 0;
-    ansi_has_value = 0;
+    pane->ansi_state = 0;
+    pane->ansi_value = 0;
+    pane->ansi_has_value = 0;
 }
 
 /*
@@ -431,65 +538,56 @@ void hdmi_show_bootscreen(void)
  * The logical text model is reinitialized because changing the layout may
  * change the visible row and column count.
  */
-static void hdmi_draw_console_chrome(void)
+static void hdmi_draw_pane_chrome(hdmi_pane_t *pane)
 {
-    uint32_t panel_x = 0u;
-    uint32_t panel_y = 0u;
-    uint32_t panel_w = framebuffer_width;
-    uint32_t panel_h = framebuffer_height;
-
-    uint32_t header_h = 42u;
-    uint32_t padding_x = 14u;
-    uint32_t padding_top = 12u;
-    uint32_t padding_bottom = 10u;
-
-    uint32_t calculated_columns;
-    uint32_t calculated_rows;
-
-    if (!framebuffer || framebuffer_width == 0u || framebuffer_height == 0u)
+    if (!pane)
     {
         return;
     }
 
-    hdmi_fill_rect(panel_x, panel_y, panel_w, panel_h, CONSOLE_BORDER);
-    hdmi_fill_rect(panel_x + 1u, panel_y + 1u, panel_w - 2u, panel_h - 2u, CONSOLE_PANEL);
+    hdmi_draw_frame(pane->frame_x, pane->frame_y, pane->frame_w,
+                    pane->frame_h, CONSOLE_BORDER, CONSOLE_PANEL);
 
-    hdmi_fill_rect(panel_x + 1u, panel_y + 1u, panel_w - 2u, header_h, CONSOLE_PANEL_ALT);
-    hdmi_fill_rect(panel_x + 1u, panel_y + header_h + 1u, panel_w - 2u, 2u, CONSOLE_ACCENT);
+    hdmi_fill_rect(pane->frame_x + 1u, pane->frame_y + 1u, pane->frame_w - 2u,
+                   HDMI_HEADER_H, CONSOLE_PANEL_ALT);
 
-    hdmi_fill_rect(panel_x + 18u, panel_y + 13u, 10u, 10u, 0x00FF6B6Bu);
-    hdmi_fill_rect(panel_x + 34u, panel_y + 13u, 10u, 10u, 0x00FFCE54u);
-    hdmi_fill_rect(panel_x + 50u, panel_y + 13u, 10u, 10u, 0x0048E27Bu);
+    hdmi_fill_rect(pane->frame_x + 1u, pane->frame_y + HDMI_HEADER_H + 1u,
+                   pane->frame_w - 2u, 2u, CONSOLE_ACCENT);
 
-    hdmi_draw_string_at(panel_x + 84u, panel_y + 8u, "HDMI Console", CONSOLE_FG, CONSOLE_PANEL_ALT, CONSOLE_SHADOW);
+    hdmi_fill_rect(pane->frame_x + 18u, pane->frame_y + 13u, 10u, 10u, 0x00FF6B6Bu);
+    hdmi_fill_rect(pane->frame_x + 34u, pane->frame_y + 13u, 10u, 10u, 0x00FFCE54u);
+    hdmi_fill_rect(pane->frame_x + 50u, pane->frame_y + 13u, 10u, 10u, 0x0048E27Bu);
 
-    status_dot_x = panel_x + panel_w - 30u;
-    status_dot_y = panel_y + 13u;
+    hdmi_draw_string_at(pane->frame_x + 84u, pane->frame_y + 8u,
+                        pane->title, CONSOLE_FG, CONSOLE_PANEL_ALT, CONSOLE_SHADOW);
+}
+
+static void hdmi_draw_panes_chrome(void)
+{
+    uint32_t screen_x = HDMI_MARGIN_X;
+    uint32_t screen_y = HDMI_MARGIN_Y;
+    uint32_t screen_w = framebuffer_width - (HDMI_MARGIN_X * 2u);
+    uint32_t screen_h = framebuffer_height - (HDMI_MARGIN_Y * 2u);
+
+    uint32_t menu_w = HDMI_MENU_WIDTH;
+    uint32_t main_w = screen_w - HDMI_PANEL_GAP - menu_w;
+
+    hdmi_fill_rect_blend(0u, 0u, framebuffer_width, framebuffer_height, 0x000C1520u, CONSOLE_BG, 1);
+
+    hdmi_fill_rect_blend(0u, 0u, framebuffer_width, 120u, 0x00152131u, CONSOLE_BG, 1);
+
+    hdmi_configure_pane(&panes[HDMI_PANE_MAIN], screen_x, screen_y,
+                        main_w, screen_h, "System Output");
+
+    hdmi_configure_pane(&panes[HDMI_PANE_MENU], screen_x + main_w + HDMI_PANEL_GAP, screen_y,
+                        menu_w, screen_h, "Joystick Menu");
+
+    hdmi_draw_pane_chrome(&panes[HDMI_PANE_MAIN]);
+    hdmi_draw_pane_chrome(&panes[HDMI_PANE_MENU]);
+
+    status_dot_x = screen_x + screen_w - 30u;
+    status_dot_y = screen_y + 13u;
     hdmi_draw_status_dot(status_dot_x, status_dot_y, 0u, CONSOLE_PANEL_ALT);
-
-    console_origin_x = panel_x + padding_x;
-    console_origin_y = panel_y + header_h + padding_top;
-
-    console_content_width = panel_w - (padding_x * 2u);
-    console_content_height = panel_h - header_h - padding_top - padding_bottom;
-
-    calculated_columns = console_content_width / CHAR_ADVANCE_X;
-    calculated_rows = console_content_height / CHAR_ADVANCE_Y;
-
-    if (calculated_columns > HDMI_MAX_COLUMNS)
-    {
-        calculated_columns = HDMI_MAX_COLUMNS;
-    }
-
-    if (calculated_rows > HDMI_MAX_ROWS)
-    {
-        calculated_rows = HDMI_MAX_ROWS;
-    }
-
-    console_columns = calculated_columns;
-    console_rows = calculated_rows;
-
-    hdmi_text_model_init();
 }
 
 /*
@@ -525,6 +623,62 @@ static int mailbox_call(uint8_t channel)
             return mailbox[1] == MAILBOX_RESPONSE_OK;
         }
     }
+}
+
+static int hdmi_present_pane(hdmi_pane_t *pane, uint32_t *rendered, uint32_t max_cells)
+{
+    uint32_t row;
+    uint32_t col;
+    int more_dirty = 0;
+
+    if (!pane || pane->columns == 0u || pane->rows == 0u)
+    {
+        return 0;
+    }
+
+    for (row = 0u; row < pane->rows; row++)
+    {
+        for (col = 0u; col < pane->columns; col++)
+        {
+            hdmi_cell_t *cell = &pane->cells[row][col];
+            hdmi_cell_t *drawn = &pane->draw[row][col];
+            int is_cursor = pane->cursor_visible && row == pane->cursor_y && col == pane->cursor_x;
+
+            if (!cell->dirty && cell->ch == drawn->ch && cell->fg == drawn->fg && cell->bg == drawn->bg)
+            {
+                continue;
+            }
+
+            if (*rendered >= max_cells)
+            {
+                more_dirty = 1;
+                continue;
+            }
+
+            {
+                uint32_t px = pane->content_x + (col * CHAR_ADVANCE_X);
+                uint32_t py = pane->content_y + (row * CHAR_ADVANCE_Y);
+
+                hdmi_draw_char_at(px, py, cell->ch, cell->fg, cell->bg, CONSOLE_SHADOW);
+
+                if (is_cursor)
+                {
+                    hdmi_draw_cursor_at(px, py, CONSOLE_ACCENT);
+                }
+            }
+
+            drawn->ch = cell->ch;
+            drawn->fg = cell->fg;
+            drawn->bg = cell->bg;
+            drawn->dirty = 0u;
+
+            cell->dirty = 0u;
+
+            (*rendered)++;
+        }
+    }
+
+    return more_dirty;
 }
 
 /*
@@ -611,8 +765,8 @@ int hdmi_init(void)
 
     hdmi_ready = 1;
 
-    hdmi_draw_console_chrome();
-    hdmi_present(HDMI_MAX_COLUMNS * HDMI_MAX_ROWS);
+    hdmi_draw_panes_chrome();
+    hdmi_present(HDMI_MAX_COLUMNS * HDMI_MAX_ROWS * HDMI_PANE_COUNT);
     return 1;
 }
 
@@ -634,20 +788,22 @@ int hdmi_is_available(void)
  * the current owner. Returns 0 on success and -1 if HDMI is unavailable or
  * owned by another task.
  */
-int hdmi_acquire(int task_id)
+int hdmi_acquire_pane(hdmi_pane_id_t pane_id, int task_id)
 {
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
     int result = -1;
 
-    if (task_id < 0 || !hdmi_is_available())
+    if (!pane || task_id < 0 || !hdmi_is_available())
     {
         return -1;
     }
 
     irq_disable();
 
-    if (hdmi_owner_task_id < 0 || hdmi_owner_task_id == task_id)
+    if (pane->owner_task_id < 0 || pane->owner_task_id == task_id)
     {
-        hdmi_owner_task_id = task_id;
+        pane->owner_task_id = task_id;
+        pane->mode = HDMI_PANE_MODE_APP;
         result = 0;
     }
 
@@ -660,21 +816,74 @@ int hdmi_acquire(int task_id)
  *
  * Releasing a task that does not own HDMI has no effect.
  */
-void hdmi_release(int task_id)
+void hdmi_release_pane(hdmi_pane_id_t pane_id, int task_id)
 {
-    if (task_id < 0)
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+
+    if (!pane || task_id < 0)
     {
         return;
     }
 
     irq_disable();
 
-    if (hdmi_owner_task_id == task_id)
+    if (pane->owner_task_id == task_id)
     {
-        hdmi_owner_task_id = -1;
+        pane->owner_task_id = -1;
+        pane->mode = HDMI_PANE_MODE_CONSOLE;
     }
 
     irq_enable();
+}
+
+int hdmi_pane_is_console_writable(hdmi_pane_id_t pane_id)
+{
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+    int writable;
+
+    if (!pane)
+    {
+        return 0;
+    }
+
+    irq_disable();
+
+    writable = pane->mode == HDMI_PANE_MODE_CONSOLE && pane->owner_task_id < 0;
+
+    irq_enable();
+
+    return writable;
+}
+
+void hdmi_set_pane_mode(hdmi_pane_id_t pane_id, hdmi_pane_mode_t mode)
+{
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+
+    if (!pane)
+    {
+        return;
+    }
+
+    irq_disable();
+    pane->mode = mode;
+    irq_enable();
+}
+
+hdmi_pane_mode_t hdmi_get_pane_mode(hdmi_pane_id_t pane_id)
+{
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+    hdmi_pane_mode_t mode = HDMI_PANE_MODE_CONSOLE;
+
+    if (!pane)
+    {
+        return HDMI_PANE_MODE_CONSOLE;
+    }
+
+    irq_disable();
+    mode = pane->mode;
+    irq_enable();
+
+    return mode;
 }
 
 /*
@@ -684,50 +893,66 @@ void hdmi_release(int task_id)
  * Existing cells are not repainted unless their contents are changed or marked
  * dirty separately.
  */
-void hdmi_set_text_colors(uint32_t fg, uint32_t bg)
+void hdmi_set_text_colors(hdmi_pane_id_t pane_id, uint32_t fg, uint32_t bg)
 {
-    text_fg = fg;
-    text_bg = bg;
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+
+    if (!pane)
+    {
+        return;
+    }
+
+    pane->fg = fg;
+    pane->bg = bg;
 }
 
 /*
  * Restore the default HDMI console text colors.
  */
-void hdmi_reset_text_colors(void)
+void hdmi_reset_text_colors(hdmi_pane_id_t pane_id)
 {
-    text_fg = CONSOLE_FG;
-    text_bg = CONSOLE_PANEL;
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+
+    if (!pane)
+    {
+        return;
+    }
+
+    pane->fg = CONSOLE_FG;
+    pane->bg = CONSOLE_PANEL;
 }
 
 /*
  * Move the logical cursor. The old and new cells are dirty because the cursor is
  * rendered as an overlay by hdmi_present().
  */
-void hdmi_set_cursor(uint32_t column, uint32_t row)
+void hdmi_set_cursor(hdmi_pane_id_t pane_id, uint32_t column, uint32_t row)
 {
-    uint32_t old_x = cursor_x;
-    uint32_t old_y = cursor_y;
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
 
-    if (console_columns == 0u || console_rows == 0u)
+    if (!pane || pane->columns == 0u || pane->rows == 0u)
     {
         return;
     }
 
-    if (column >= console_columns)
+    uint32_t old_x = pane->cursor_x;
+    uint32_t old_y = pane->cursor_y;
+
+    if (column >= pane->columns)
     {
-        column = console_columns - 1u;
+        column = pane->columns - 1u;
     }
 
-    if (row >= console_rows)
+    if (row >= pane->rows)
     {
-        row = console_rows - 1u;
+        row = pane->rows - 1u;
     }
 
-    cursor_x = column;
-    cursor_y = row;
+    pane->cursor_x = column;
+    pane->cursor_y = row;
 
-    hdmi_mark_cell_dirty(old_x, old_y);
-    hdmi_mark_cell_dirty(cursor_x, cursor_y);
+    hdmi_mark_cell_dirty(pane, old_x, old_y);
+    hdmi_mark_cell_dirty(pane, pane->cursor_x, pane->cursor_y);
 }
 
 /*
@@ -738,107 +963,109 @@ void hdmi_set_cursor(uint32_t column, uint32_t row)
  * Newline, carriage return, tab, backspace and a minimal CSI subset are handled
  * explicitly.
  */
-void hdmi_putc(char c)
+void hdmi_putc(hdmi_pane_id_t pane_id, char c)
 {
-    if (!framebuffer || console_columns == 0u || console_rows == 0u)
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+
+    if (!framebuffer || !pane || pane->columns == 0u || pane->rows == 0u)
     {
         return;
     }
 
-    if (ansi_state == 1)
+    if (pane->ansi_state == 1)
     {
         if (c == '[')
         {
-            ansi_state = 2;
-            ansi_value = 0u;
-            ansi_has_value = 0;
+            pane->ansi_state = 2;
+            pane->ansi_value = 0u;
+            pane->ansi_has_value = 0;
         }
         else
         {
-            ansi_state = 0;
+            pane->ansi_state = 0;
         }
         return;
     }
 
-    if (ansi_state == 2)
+    if (pane->ansi_state == 2)
     {
         if (c >= '0' && c <= '9')
         {
-            ansi_value = (ansi_value * 10u) + (uint32_t)(c - '0');
-            ansi_has_value = 1;
+            pane->ansi_value = (pane->ansi_value * 10u) + (uint32_t)(c - '0');
+            pane->ansi_has_value = 1;
             return;
         }
 
-        hdmi_handle_csi(c);
+        hdmi_handle_csi(pane, c);
         return;
     }
 
     if (c == '\x1b')
     {
-        ansi_state = 1;
+        pane->ansi_state = 1;
         return;
     }
 
     if (c == '\r')
     {
-        hdmi_set_cursor(0u, cursor_y);
+        hdmi_set_cursor(pane_id, 0u, pane->cursor_y);
         return;
     }
 
     if (c == '\n')
     {
-        hdmi_newline();
+        hdmi_newline(pane);
         return;
     }
 
     if (c == '\b')
     {
-        if (cursor_x > 0u)
+        if (pane->cursor_x > 0u)
         {
-            hdmi_set_cursor(cursor_x - 1u, cursor_y);
+            hdmi_set_cursor(pane_id, pane->cursor_x - 1u, pane->cursor_y);
         }
 
-        hdmi_set_cell(cursor_x, cursor_y, ' ', text_fg, text_bg);
-        hdmi_mark_cell_dirty(cursor_x, cursor_y);
+        hdmi_set_cell(pane, pane->cursor_x, pane->cursor_y, ' ', pane->fg, pane->bg);
+        hdmi_mark_cell_dirty(pane, pane->cursor_x, pane->cursor_y);
         return;
     }
 
     if (c == '\t')
     {
-        hdmi_putc(' ');
-        hdmi_putc(' ');
-        hdmi_putc(' ');
-        hdmi_putc(' ');
+        hdmi_putc(pane_id, ' ');
+        hdmi_putc(pane_id, ' ');
+        hdmi_putc(pane_id, ' ');
+        hdmi_putc(pane_id, ' ');
         return;
     }
 
-    if (cursor_x >= console_columns)
+    if (pane->cursor_x >= pane->columns)
     {
-        hdmi_newline();
+        hdmi_newline(pane);
     }
 
-    hdmi_set_cell(cursor_x, cursor_y, c, text_fg, text_bg);
+    hdmi_set_cell(pane, pane->cursor_x, pane->cursor_y, c, pane->fg, pane->bg);
 
-    cursor_x++;
+    pane->cursor_x++;
 
-    if (cursor_x >= console_columns)
+    if (pane->cursor_x >= pane->columns)
     {
-        hdmi_newline();
+        hdmi_newline(pane);
     }
     else
     {
-        hdmi_mark_cell_dirty(cursor_x, cursor_y);
+        hdmi_mark_cell_dirty(pane, pane->cursor_x, pane->cursor_y);
     }
 }
 
 /*
  * Draw a zero-terminated string into the logical HDMI text console.
  */
-void hdmi_puts(const char *s)
+void hdmi_puts(hdmi_pane_id_t pane_id, const char *s)
 {
     while (s && *s)
     {
-        hdmi_putc(*s++);
+        hdmi_putc(pane_id, *s++);
     }
 }
 
@@ -855,12 +1082,10 @@ void hdmi_puts(const char *s)
  */
 int hdmi_present(uint32_t max_cells)
 {
-    uint32_t row;
-    uint32_t col;
     uint32_t rendered = 0u;
     int more_dirty = 0;
 
-    if (!framebuffer || console_columns == 0u || console_rows == 0u)
+    if (!framebuffer)
     {
         return 0;
     }
@@ -870,46 +1095,14 @@ int hdmi_present(uint32_t max_cells)
         max_cells = 1u;
     }
 
-    for (row = 0u; row < console_rows; row++)
+    if (hdmi_present_pane(&panes[HDMI_PANE_MAIN], &rendered, max_cells))
     {
-        for (col = 0u; col < console_columns; col++)
-        {
-            hdmi_cell_t *cell = &text_cells[row][col];
-            hdmi_cell_t *drawn = &drawn_cells[row][col];
-            int is_cursor = cursor_visible && row == cursor_y && col == cursor_x;
+        more_dirty = 1;
+    }
 
-            if (!cell->dirty && cell->ch == drawn->ch &&
-                cell->fg == drawn->fg && cell->bg == drawn->bg)
-            {
-                continue;
-            }
-
-            if (rendered >= max_cells)
-            {
-                more_dirty = 1;
-                continue;
-            }
-
-            {
-                uint32_t px = console_origin_x + (col * CHAR_ADVANCE_X);
-                uint32_t py = console_origin_y + (row * CHAR_ADVANCE_Y);
-
-                hdmi_draw_char_at(px, py, cell->ch, cell->fg, cell->bg, CONSOLE_SHADOW);
-
-                if (is_cursor)
-                {
-                    hdmi_draw_cursor_at(px, py, CONSOLE_ACCENT);
-                }
-            }
-
-            drawn->ch = cell->ch;
-            drawn->fg = cell->fg;
-            drawn->bg = cell->bg;
-            drawn->dirty = 0u;
-            cell->dirty = 0u;
-
-            rendered++;
-        }
+    if (hdmi_present_pane(&panes[HDMI_PANE_MENU], &rendered, max_cells))
+    {
+        more_dirty = 1;
     }
 
     return more_dirty;
@@ -918,16 +1111,17 @@ int hdmi_present(uint32_t max_cells)
 /*
  * Clear only the HDMI text console. The static chrome remains untouched.
  */
-void hdmi_clear_console(void)
+void hdmi_clear_pane(hdmi_pane_id_t pane_id)
 {
-    if (!framebuffer)
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+
+    if (!framebuffer || !pane)
     {
         return;
     }
 
-    hdmi_reset_text_colors();
-    hdmi_text_model_clear(text_fg, text_bg);
-    hdmi_mark_all_dirty();
+    hdmi_text_model_clear(pane, pane->fg, pane->bg);
+    hdmi_mark_pane_dirty(pane);
 }
 
 /*
@@ -937,17 +1131,20 @@ void hdmi_clear_console(void)
  * layout/theme must be recreated. Normal clear operations should use
  * hdmi_clear_console() instead.
  */
-void hdmi_reset_console(void)
+void hdmi_reset_panes(void)
 {
     if (!framebuffer)
     {
         return;
     }
 
-    hdmi_reset_text_colors();
-    hdmi_draw_console_chrome();
-    hdmi_text_model_clear(text_fg, text_bg);
-    hdmi_mark_all_dirty();
+    hdmi_draw_panes_chrome();
+
+    hdmi_text_model_clear(&panes[HDMI_PANE_MAIN], CONSOLE_FG, CONSOLE_PANEL);
+    hdmi_text_model_clear(&panes[HDMI_PANE_MENU], CONSOLE_FG, CONSOLE_PANEL);
+
+    hdmi_mark_pane_dirty(&panes[HDMI_PANE_MAIN]);
+    hdmi_mark_pane_dirty(&panes[HDMI_PANE_MENU]);
 }
 
 /*
