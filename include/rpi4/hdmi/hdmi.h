@@ -22,6 +22,8 @@ void hdmi_release_pane(hdmi_pane_id_t pane_id, int task_id);
 int hdmi_pane_is_console_writable(hdmi_pane_id_t pane_id);
 void hdmi_set_pane_mode(hdmi_pane_id_t pane_id, hdmi_pane_mode_t mode);
 hdmi_pane_mode_t hdmi_get_pane_mode(hdmi_pane_id_t pane_id);
+uint32_t hdmi_get_pane_columns(hdmi_pane_id_t pane_id);
+uint32_t hdmi_get_pane_rows(hdmi_pane_id_t pane_id);
 
 void hdmi_set_text_colors(hdmi_pane_id_t pane_id, uint32_t fg, uint32_t bg);
 void hdmi_reset_text_colors(hdmi_pane_id_t pane_id);

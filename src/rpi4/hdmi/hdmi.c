@@ -937,6 +937,40 @@ hdmi_pane_mode_t hdmi_get_pane_mode(hdmi_pane_id_t pane_id)
     return mode;
 }
 
+uint32_t hdmi_get_pane_columns(hdmi_pane_id_t pane_id)
+{
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+    uint32_t columns = 0u;
+
+    if (!pane)
+    {
+        return 0u;
+    }
+
+    irq_disable();
+    columns = pane->columns;
+    irq_enable();
+
+    return columns;
+}
+
+uint32_t hdmi_get_pane_rows(hdmi_pane_id_t pane_id)
+{
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+    uint32_t rows = 0u;
+
+    if (!pane)
+    {
+        return 0u;
+    }
+
+    irq_disable();
+    rows = pane->rows;
+    irq_enable();
+
+    return rows;
+}
+
 /*
  * Set the foreground and background colors used for subsequently written text
  * cells.

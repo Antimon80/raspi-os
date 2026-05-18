@@ -1,4 +1,5 @@
 #include "kernel/io/joy_menu.h"
+#include "kernel/io/console.h"
 #include "kernel/tasks/joystick_task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
@@ -65,6 +66,7 @@ void joystick_task(void)
         }
     }
 
+    console_puts("joystick: init OK\n");
     log_append_current_task("joystick: init OK", 0);
 
     joy_menu_init();

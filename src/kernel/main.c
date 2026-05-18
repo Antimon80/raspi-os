@@ -93,7 +93,7 @@ void main(void)
 
     irq_enable();
 
-    uart_puts("Kernel initialized\n");
+    console_puts("Kernel initialized\n");
 
     scheduler_start();
 

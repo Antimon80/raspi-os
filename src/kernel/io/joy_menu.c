@@ -1,6 +1,7 @@
 #include "kernel/io/joy_menu.h"
 #include "kernel/io/shell.h"
 #include "kernel/io/console.h"
+#include "kernel/sched/scheduler.h"
 #include "kernel/timer.h"
 #include "rpi4/hdmi/hdmi.h"
 #include "util/string.h"
@@ -16,9 +17,7 @@
 #define JOY_MENU_HINT 0x0041E4FFu
 
 /* Fixed menu layout. */
-#define JOY_MENU_LINE_WIDTH 24u
-#define JOY_MENU_TOP_ROW 5u
-#define JOY_MENU_FIRST_ITEM_ROW (JOY_MENU_TOP_ROW + 5u)
+#define JOY_MENU_FIRST_ITEM_ROW 5u
 #define JOY_MENU_MAX_VISIBLE_ITEMS 18u
 #define JOY_MENU_COMMAND_BUFFER_SIZE 64u
 
@@ -107,6 +106,23 @@ static const char *task_entries[] = {
 #define JOY_MENU_LOG_ITEMS ((int)(sizeof(log_entries) / sizeof(log_entries[0])))
 #define JOY_MENU_TASK_ITEMS ((int)(sizeof(task_entries) / sizeof(task_entries[0])))
 
+static unsigned int joy_menu_line_widht(void)
+{
+    uint32_t columns = hdmi_get_pane_columns(HDMI_PANE_MENU);
+
+    if (columns == 0u)
+    {
+        return 18u;
+    }
+
+    if (columns <= 1u)
+    {
+        return 1u;
+    }
+
+    return (unsigned int)(columns - 1u);
+}
+
 /*
  * Return the number of entries in the currently active menu view.
  */
@@ -177,8 +193,9 @@ static void joy_menu_hdmi_puts(uint32_t fg, const char *s)
 static void joy_menu_pad_line(unsigned int used)
 {
     hdmi_set_text_colors(HDMI_PANE_MENU, JOY_MENU_TEXT, JOY_MENU_BG);
+    unsigned int width = joy_menu_line_widht();
 
-    while (used < JOY_MENU_LINE_WIDTH)
+    while (used < width)
     {
         hdmi_putc(HDMI_PANE_MENU, ' ');
         used++;
@@ -396,20 +413,21 @@ static void joy_menu_render(void)
 
     hdmi_clear_pane(HDMI_PANE_MENU);
 
-    joy_menu_write_line(JOY_MENU_TOP_ROW + 0u, JOY_MENU_TEXT, joy_menu_title());
-    joy_menu_write_line(JOY_MENU_TOP_ROW + 1u, JOY_MENU_TEXT, "============");
-    joy_menu_write_line(JOY_MENU_TOP_ROW + 2u, JOY_MENU_MUTED, joy_menu_hint_line_1());
-    joy_menu_write_line(JOY_MENU_TOP_ROW + 3u, JOY_MENU_MUTED, joy_menu_hint_line_2());
+    joy_menu_write_line(0u, JOY_MENU_TEXT, joy_menu_title());
+    joy_menu_write_line(1u, JOY_MENU_TEXT, "============");
+    joy_menu_write_line(2u, JOY_MENU_MUTED, joy_menu_hint_line_1());
+    joy_menu_write_line(3u, JOY_MENU_MUTED, joy_menu_hint_line_2());
 
     if (!menu_state.active)
     {
-        joy_menu_write_line(JOY_MENU_TOP_ROW + 5u, JOY_MENU_MUTED, "menu closed");
-        joy_menu_write_line(JOY_MENU_TOP_ROW + 7u, JOY_MENU_MUTED, "long center");
-        joy_menu_write_line(JOY_MENU_TOP_ROW + 8u, JOY_MENU_MUTED, "to open");
-        joy_menu_clear_from(JOY_MENU_TOP_ROW + 10u);
+        joy_menu_write_line(5u, JOY_MENU_MUTED, "menu closed");
+        joy_menu_write_line(7u, JOY_MENU_MUTED, "long center");
+        joy_menu_write_line(8u, JOY_MENU_MUTED, "to open");
+        joy_menu_clear_from(10u);
 
         while (hdmi_present(16u))
         {
+            scheduler_yield();
         }
 
         return;
@@ -467,6 +485,7 @@ static void joy_menu_render(void)
 
     while (hdmi_present(16u))
     {
+        scheduler_yield();
     }
 }
 

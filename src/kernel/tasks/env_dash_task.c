@@ -20,12 +20,27 @@
 #define ENV_DASH_GOOD 0x0048E27Bu
 
 /* Fixed dashboard text area. */
-#define ENV_DASH_LINE_WIDTH 56u
 #define ENV_DASH_BUFFER_SIZE 96u
-#define ENV_DASH_TOP_ROW 1u
 
 /* Currently running envdash task. */
 static int env_dash_task_id = -1;
+
+static unsigned int env_dash_line_width(void)
+{
+    uint32_t columns = hdmi_get_pane_columns(HDMI_PANE_MAIN);
+
+    if (columns == 0)
+    {
+        return 56u;
+    }
+
+    if (columns <= 1u)
+    {
+        return 1u;
+    }
+
+    return (unsigned int)(columns - 1u);
+}
 
 /*
  * Register the env dashboard task ID.
@@ -115,8 +130,9 @@ static void env_dash_make_tick_line(char *out, unsigned int size, uint64_t tick)
 static void env_dash_pad_line(unsigned int used)
 {
     hdmi_set_text_colors(HDMI_PANE_MAIN, ENV_DASH_TEXT, ENV_DASH_BG);
+    unsigned int width = env_dash_line_width();
 
-    while (used < ENV_DASH_LINE_WIDTH)
+    while (used < width)
     {
         hdmi_putc(HDMI_PANE_MAIN, ' ');
         used++;
@@ -217,14 +233,15 @@ static void env_dash_render_waiting(void)
 {
     hdmi_clear_pane(HDMI_PANE_MAIN);
 
-    env_dash_write_line(ENV_DASH_TOP_ROW + 0u, ENV_DASH_TEXT, "ENVIRONMENT DASHBOARD");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 1u, ENV_DASH_TEXT, "=====================");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 3u, ENV_DASH_MUTED, "waiting for env sample ...");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 5u, ENV_DASH_MUTED, "start env first if needed");
-    env_dash_clear_from(ENV_DASH_TOP_ROW + 7u);
+    env_dash_write_line(0u, ENV_DASH_TEXT, "ENVIRONMENT DASHBOARD");
+    env_dash_write_line(1u, ENV_DASH_TEXT, "=====================");
+    env_dash_write_line(3u, ENV_DASH_MUTED, "waiting for env sample ...");
+    env_dash_write_line(5u, ENV_DASH_MUTED, "start env first if needed");
+    env_dash_clear_from(7u);
 
     while (hdmi_present(32u))
     {
+        scheduler_yield();
     }
 }
 
@@ -244,42 +261,43 @@ static void env_dash_render_sample(const env_sample_t *sample)
 
     hdmi_clear_pane(HDMI_PANE_MAIN);
 
-    env_dash_write_line(ENV_DASH_TOP_ROW + 0u, ENV_DASH_TEXT, "ENVIRONMENT DASHBOARD");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 1u, ENV_DASH_TEXT, "=====================");
+    env_dash_write_line(0u, ENV_DASH_TEXT, "ENVIRONMENT DASHBOARD");
+    env_dash_write_line(1u, ENV_DASH_TEXT, "=====================");
 
     env_dash_make_centi_line(line, sizeof(line), "temperature", sample->temperature_centi_c, "deg C");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 3u, env_dash_temperature_color(sample->temperature_centi_c), line);
+    env_dash_write_line(3u, env_dash_temperature_color(sample->temperature_centi_c), line);
 
     env_dash_make_centi_line(line, sizeof(line), "humidity", sample->humidity_centi_percent, "%");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 4u, env_dash_humidity_color(sample->humidity_centi_percent), line);
+    env_dash_write_line(4u, env_dash_humidity_color(sample->humidity_centi_percent), line);
 
     env_dash_make_centi_line(line, sizeof(line), "pressure", sample->pressure_centi_hpa, "hPa");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 5u, ENV_DASH_MUTED, line);
+    env_dash_write_line(5u, ENV_DASH_MUTED, line);
 
     env_dash_make_tick_line(line, sizeof(line), sample->tick);
-    env_dash_write_line(ENV_DASH_TOP_ROW + 6u, ENV_DASH_MUTED, line);
+    env_dash_write_line(6u, ENV_DASH_MUTED, line);
 
-    env_dash_write_line(ENV_DASH_TOP_ROW + 8u, ENV_DASH_TEXT, "LED MATRIX LEGEND");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 9u, ENV_DASH_TEXT, "-----------------");
+    env_dash_write_line(8u, ENV_DASH_TEXT, "LED MATRIX LEGEND");
+    env_dash_write_line(9u, ENV_DASH_TEXT, "-----------------");
 
-    env_dash_write_line(ENV_DASH_TOP_ROW + 11u, ENV_DASH_TEXT, "rows 0..3: temperature");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 12u, ENV_DASH_GOOD, "  green  < 35.00 deg C");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 13u, ENV_DASH_TEMP, "  yellow < 40.00 deg C");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 14u, 0x00DC5000u, "  orange < 45.00 deg C");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 15u, ENV_DASH_WARN, "  red    >= 45.00 deg C");
+    env_dash_write_line(11u, ENV_DASH_TEXT, "rows 0..3: temperature");
+    env_dash_write_line(12u, ENV_DASH_GOOD, "  green  < 35.00 deg C");
+    env_dash_write_line(13u, ENV_DASH_TEMP, "  yellow < 40.00 deg C");
+    env_dash_write_line(14u, 0x00DC5000u, "  orange < 45.00 deg C");
+    env_dash_write_line(15u, ENV_DASH_WARN, "  red    >= 45.00 deg C");
 
-    env_dash_write_line(ENV_DASH_TOP_ROW + 18u, ENV_DASH_TEXT, "rows 5..7: humidity");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 19u, 0x0033FFFFu, "  cyan       < 30.00 %");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 20u, 0x003399FFu, "  light blue < 45.00 %");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 21u, 0x000000FFu, "  blue       < 60.00 %");
-    env_dash_write_line(ENV_DASH_TOP_ROW + 22u, 0x006600CCu, "  purple     >= 60.00 %");
+    env_dash_write_line(18u, ENV_DASH_TEXT, "rows 5..7: humidity");
+    env_dash_write_line(19u, 0x0033FFFFu, "  cyan       < 30.00 %");
+    env_dash_write_line(20u, 0x003399FFu, "  light blue < 45.00 %");
+    env_dash_write_line(21u, 0x000000FFu, "  blue       < 60.00 %");
+    env_dash_write_line(22u, 0x006600CCu, "  purple     >= 60.00 %");
 
-    env_dash_clear_from(ENV_DASH_TOP_ROW + 27u);
+    env_dash_clear_from(27u);
 
     env_dash_clear_from(30u);
 
     while (hdmi_present(32u))
     {
+        scheduler_yield();
     }
 }
 
@@ -298,6 +316,7 @@ void env_dash_cleanup_resources(void)
 
         while (hdmi_present(32u))
         {
+            scheduler_yield();
         }
 
         hdmi_release_pane(HDMI_PANE_MAIN, env_dash_task_id);

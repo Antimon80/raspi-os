@@ -1,4 +1,5 @@
 #include "kernel/io/hdmi_console.h"
+#include "kernel/io/console.h"
 #include "kernel/irq.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/sched/task.h"
@@ -271,6 +272,7 @@ void hdmi_console_task(void)
         hdmi_console_task_id = scheduler_current_task_id();
     }
 
+    console_puts("HDMI: init OK\n");
     log_append_current_task("hdmi_console: renderer started", 0);
 
     while (1)

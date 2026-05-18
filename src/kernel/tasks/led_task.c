@@ -136,7 +136,7 @@ void led_task(void)
         }
     }
 
-    console_puts("led task: matrix init OK\n");
+    console_puts("LED matrix: init OK\n");
     log_append_current_task("led: matrix init OK", 0);
 
     while (1)
