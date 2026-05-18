@@ -67,9 +67,9 @@ static const joy_menu_main_entry_t main_entries[] =
     {
         {"env history", JOY_MENU_ACTION_COMMAND},
         {"help", JOY_MENU_ACTION_HELP},
-        {"heap stats", JOY_MENU_ACTION_COMMAND},
         {"log", JOY_MENU_ACTION_OPEN_LOG},
         {"ps", JOY_MENU_ACTION_COMMAND},
+        {"shutdown", JOY_MENU_ACTION_COMMAND},
         {"tasks", JOY_MENU_ACTION_OPEN_TASKS},
         {"trace dump", JOY_MENU_ACTION_COMMAND},
 };

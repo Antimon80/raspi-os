@@ -76,6 +76,12 @@ void led_matrix_clear(void)
     led_matrix_fill(black);
 }
 
+int led_matrix_clear_shutdown(void){
+    led_matrix_clear();
+    return led_matrix_present();
+}
+
+
 /*
  * Fill the entire shadow framebuffer with one color.
  */

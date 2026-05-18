@@ -844,6 +844,7 @@ static void ttt_render_hdmi(const ttt_game_t *game, int clear)
 
     while (hdmi_present(32u))
     {
+        scheduler_yield();
     }
 }
 
@@ -962,6 +963,7 @@ void ttt_cleanup_resources(void)
 
         while (hdmi_present(32u))
         {
+            scheduler_yield();
         }
 
         hdmi_release_pane(HDMI_PANE_MAIN, ttt_task_id);

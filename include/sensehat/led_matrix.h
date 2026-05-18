@@ -20,6 +20,7 @@ typedef struct
 
 int led_matrix_init(void);
 void led_matrix_clear(void);
+int led_matrix_clear_shutdown(void);
 void led_matrix_fill(led_matrix_color_t color);
 int led_matrix_render_frame(const led_frame_t *frame);
 int led_matrix_set_pixel(int x, int y, led_matrix_color_t color);

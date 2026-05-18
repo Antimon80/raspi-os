@@ -15,6 +15,7 @@
 #include "kernel/tasks/diag_dash_task.h"
 #include "kernel/debug/trace.h"
 #include "kernel/timer.h"
+#include "kernel/shutdown.h"
 #include "sensehat/led_matrix.h"
 #include "rpi4/drivers/uart.h"
 #include "util/string.h"
@@ -175,6 +176,7 @@ void shell_cmd_help(void)
     console_puts("  log <id|name>\n");
     console_puts("  log clear <id|name>\n");
     console_puts("  ps\n");
+    console_puts("  shutdown\n");
     console_puts("  startable\n");
     console_puts("  start <name>\n");
     console_puts("  stop <id|name>\n");
@@ -697,6 +699,10 @@ void shell_execute_command(const char *cmd)
     else if (str_equals(cmd, "heap dump"))
     {
         heap_dump();
+    }
+    else if (str_equals(cmd, "shutdown"))
+    {
+        kernel_shutdown();
     }
     else if (str_equals(cmd, "startable"))
     {
