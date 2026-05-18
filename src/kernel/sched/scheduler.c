@@ -21,6 +21,9 @@ static int current_task_id = -1;
 /* ID of the idle task created during scheduler initialization. */
 static int idle_task_id = -1;
 
+/* Scheduler runtime accounting. */
+static uint64_t last_switch_tick = 0;
+
 static int scheduler_pick_next(void);
 static void scheduler_task_exit(void);
 static void idle_task(void);
@@ -76,15 +79,11 @@ static void idle_task(void)
     }
 }
 
-/*
- * Idle task.
- *
- * Runs when no other runnable task is available. For now it simply
- * waits for events in an infinite loop.
- */
 void scheduler_init(void)
 {
     current_task_id = -1;
+    last_switch_tick = timer_get_ticks();
+
     idle_task_id = task_create_system(idle_task, "idle");
 
     if (idle_task_id < 0)
@@ -230,6 +229,20 @@ void scheduler_yield(void)
 
     irq_disable();
 
+    uint64_t now = timer_get_ticks();
+
+    if (prev_id >= 0)
+    {
+        task_t *running = task_get(prev_id);
+
+        if (running && running->state != UNUSED)
+        {
+            running->runtime_ticks += now - last_switch_tick;
+        }
+    }
+
+    last_switch_tick = now;
+
     if (prev_id >= 0)
     {
         prev = task_get(prev_id);
@@ -264,6 +277,7 @@ void scheduler_yield(void)
         }
 
         same->state = RUNNING;
+        same->switch_count++;
         irq_enable();
         return;
     }
@@ -276,6 +290,7 @@ void scheduler_yield(void)
     }
 
     next->state = RUNNING;
+    next->switch_count++;
     current_task_id = next_id;
 
     trace_record_irq_disabled(TRACE_CTX_SWITCH, prev_id, next_id, 0);

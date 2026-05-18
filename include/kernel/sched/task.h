@@ -3,10 +3,11 @@
 
 #include <stdint.h>
 
-#define MAX_TASKS 16
+#define MAX_TASKS 32
 #define TASK_STACK_SIZE 8192
 #define TASK_NAME_LEN 16
 #define TASK_FLAG_SYSTEM (1u << 0)
+#define TASK_STACK_PATTERN 0xA5u
 
 typedef enum {
     UNUSED = 0,
@@ -24,6 +25,10 @@ typedef struct task {
     uint64_t *sp;
     void(*entry)(void);
     uint64_t wakeup_tick;
+
+    uint64_t runtime_ticks;
+    uint64_t switch_count;
+
     char name[TASK_NAME_LEN];
     uint8_t stack[TASK_STACK_SIZE];
 } task_t;
@@ -33,7 +38,11 @@ task_t *task_get(int id);
 
 int task_create(void (*entry)(void), const char *name, uint32_t flag);
 int task_create_system(void (*entry)(void), const char *name);
+
 int task_request_stop(int id);
 void task_reap_dying(int exclude_id);
+
+unsigned int task_get_stack_used_bytes(int id);
+unsigned int task_get_stack_free_bytes(int id);
 
 #endif

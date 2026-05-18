@@ -25,23 +25,6 @@
 /* Currently running envdash task. */
 static int env_dash_task_id = -1;
 
-static unsigned int env_dash_line_width(void)
-{
-    uint32_t columns = hdmi_get_pane_columns(HDMI_PANE_MAIN);
-
-    if (columns == 0)
-    {
-        return 56u;
-    }
-
-    if (columns <= 1u)
-    {
-        return 1u;
-    }
-
-    return (unsigned int)(columns - 1u);
-}
-
 /*
  * Register the env dashboard task ID.
  */
@@ -56,6 +39,22 @@ void env_dash_set_task_id(int id)
 int env_dash_get_task_id(void)
 {
     return env_dash_task_id;
+}
+
+/*
+ * Write one full dashboard line to the HDMI main pane.
+ */
+static void env_dash_write_line(uint32_t row, uint32_t fg, const char *s)
+{
+    hdmi_write_line(HDMI_PANE_MAIN, row, fg, ENV_DASH_BG, s);
+}
+
+/*
+ * Clear all dashboard rows from the given row downwards.
+ */
+static void env_dash_clear_from(uint32_t row)
+{
+    hdmi_clear_lines_from(HDMI_PANE_MAIN, row, ENV_DASH_TEXT, ENV_DASH_BG);
 }
 
 /*
@@ -119,63 +118,6 @@ static void env_dash_make_tick_line(char *out, unsigned int size, uint64_t tick)
         format_append_char(&fmt, '0');
     }
     format_append_uint(&fmt, seconds);
-}
-
-/*
- * Fill the rest of the current dashboard line with background-colored spaces.
- *
- * This prevents stale characters from previous, longer lines from staying
- * visible on the HDMI pane.
- */
-static void env_dash_pad_line(unsigned int used)
-{
-    hdmi_set_text_colors(HDMI_PANE_MAIN, ENV_DASH_TEXT, ENV_DASH_BG);
-    unsigned int width = env_dash_line_width();
-
-    while (used < width)
-    {
-        hdmi_putc(HDMI_PANE_MAIN, ' ');
-        used++;
-    }
-
-    hdmi_reset_text_colors(HDMI_PANE_MAIN);
-}
-
-/*
- * Render one dashboard line at the given row.
- *
- * The line is written with the requested foreground color and then padded
- * to the fixed dashboard width.
- */
-static void env_dash_write_line(uint32_t row, uint32_t fg, const char *s)
-{
-    unsigned int used = 0u;
-    const char *p = s;
-
-    while (p && *p)
-    {
-        used++;
-        p++;
-    }
-
-    hdmi_set_cursor(HDMI_PANE_MAIN, 0u, row);
-    hdmi_set_text_colors(HDMI_PANE_MAIN, fg, ENV_DASH_BG);
-    hdmi_puts(HDMI_PANE_MAIN, s);
-    hdmi_reset_text_colors(HDMI_PANE_MAIN);
-
-    env_dash_pad_line(used);
-}
-
-/*
- * Clear all dashboard rows from the given row downwards.
- */
-static void env_dash_clear_from(uint32_t row)
-{
-    while (row < 28u)
-    {
-        env_dash_write_line(row, ENV_DASH_TEXT, "");
-        row++;
-    }
 }
 
 /*
@@ -291,9 +233,7 @@ static void env_dash_render_sample(const env_sample_t *sample)
     env_dash_write_line(21u, 0x000000FFu, "  blue       < 60.00 %");
     env_dash_write_line(22u, 0x006600CCu, "  purple     >= 60.00 %");
 
-    env_dash_clear_from(27u);
-
-    env_dash_clear_from(30u);
+    env_dash_clear_from(23u);
 
     while (hdmi_present(32u))
     {

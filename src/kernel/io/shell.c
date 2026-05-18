@@ -1,5 +1,6 @@
 #include "kernel/io/shell.h"
 #include "kernel/io/console.h"
+#include "kernel/debug/diag.h"
 #include "kernel/sched/task.h"
 #include "kernel/sched/scheduler.h"
 #include "kernel/memory/heap.h"
@@ -11,12 +12,14 @@
 #include "kernel/tasks/env_task.h"
 #include "kernel/tasks/env_status_task.h"
 #include "kernel/tasks/env_dash_task.h"
+#include "kernel/tasks/diag_dash_task.h"
 #include "kernel/debug/trace.h"
 #include "kernel/timer.h"
 #include "sensehat/led_matrix.h"
 #include "rpi4/drivers/uart.h"
 #include "util/string.h"
 #include "util/convert.h"
+#include "util/format.h"
 
 #include <stdint.h>
 
@@ -39,6 +42,7 @@ static const startable_task_t startable_tasks[] = {
     {"burst", burst_task},
     {"tictactoe", tictactoe_task},
     {"gol", gol_task},
+    {"diagdash", diag_dash_task},
     {"env", env_task},
     {"envdash", env_dash_task},
     {"envled", env_status_task}};
@@ -163,11 +167,11 @@ int shell_find_task_by_name(const char *name)
 void shell_cmd_help(void)
 {
     console_puts("Commands: \n");
+    console_puts("  diag\n");
     console_puts("  env\n");
     console_puts("  env history\n");
     console_puts("  help\n");
     console_puts("  heap dump\n");
-    console_puts("  heap stats\n");
     console_puts("  log <id|name>\n");
     console_puts("  log clear <id|name>\n");
     console_puts("  ps\n");
@@ -176,6 +180,97 @@ void shell_cmd_help(void)
     console_puts("  stop <id|name>\n");
     console_puts("  trace dump\n");
     console_puts("  trace clear\n");
+}
+
+static void shell_print_percent_bar(unsigned int percent)
+{
+    console_put_uint(percent);
+    console_puts("%");
+}
+
+static void shell_cmd_diag(void)
+{
+    diag_snapshot_t snap;
+
+    diag_get_snapshot(&snap);
+
+    console_puts("=========================\n");
+    console_puts("System diagnostics\n\n");
+
+    char line[64];
+    format_buffer_t fmt;
+    format_buffer_init(&fmt, line, sizeof(line));
+    format_append_string(&fmt, " uptime: ");
+    format_append_timestamp(&fmt, snap.tick);
+    console_puts(line);
+
+    console_puts("\n");
+
+    console_puts(" CPU busy: ");
+    shell_print_percent_bar(snap.cpu_busy_percent);
+    console_puts("  idle_delta=");
+    console_put_u64(snap.idle_runtime_delta_ticks);
+    console_puts(" total_delta=");
+    console_put_u64(snap.total_runtime_delta_ticks);
+    console_puts("\n\n");
+
+    console_puts(" Heap:\n");
+    console_puts("  start: ");
+    console_put_hex_uintptr(snap.heap.start);
+    console_puts("\n");
+
+    console_puts("  end:   ");
+    console_put_hex_uintptr(snap.heap.end);
+    console_puts("\n");
+
+    console_puts("  used:  ");
+    console_put_u64((uint64_t)snap.heap.used_bytes);
+    console_puts(" bytes\n");
+
+    console_puts("  free:  ");
+    console_put_u64((uint64_t)snap.heap.free_bytes);
+    console_puts(" bytes\n");
+
+    console_puts("  total: ");
+    console_put_u64((uint64_t)snap.heap.total_bytes);
+    console_puts(" bytes\n");
+
+    console_puts("  blocks: ");
+    console_put_u64((uint64_t)snap.heap.block_count);
+    console_puts(" used=");
+    console_put_u64((uint64_t)snap.heap.used_block_count);
+    console_puts(" free=");
+    console_put_u64((uint64_t)snap.heap.free_block_count);
+    console_puts("\n\n");
+
+    console_puts(" Tasks:\n");
+    console_puts(" ID STATE     STACK        CPUd  SW    NAME\n");
+
+    for (unsigned int i = 0u; i < snap.task_count; i++)
+    {
+        diag_task_info_t *task = &snap.tasks[i];
+
+        console_put_uint((unsigned int)task->id);
+        console_puts("  ");
+        shell_print_task_state(task->state);
+        console_puts("   ");
+
+        console_put_uint(task->stack_used_bytes);
+        console_puts("/");
+        console_put_uint(TASK_STACK_SIZE);
+        console_puts("   ");
+
+        console_put_u64(task->runtime_delta_ticks);
+        console_puts("   ");
+
+        console_put_u64(task->switch_count);
+        console_puts("   ");
+
+        console_puts(task->name);
+        console_puts("\n");
+    }
+
+    console_puts("=========================\n");
 }
 
 /*
@@ -273,6 +368,7 @@ void shell_cmd_start_arg(const char *name)
     {
         console_puts("envdash: env_task is not running\n");
         log_append_current_task("shell: start envdash denied because env is not running\n", 0);
+        return;
     }
 
     id = task_create(entry->entry, entry->name, 0);
@@ -337,6 +433,12 @@ void shell_cmd_stop_id(int id)
         led_release(id);
         env_status_set_task_id(-1);
         log_append_current_task("shell: released LED for envled id=", id);
+    }
+
+    if (id == diag_dash_get_task_id())
+    {
+        diag_dash_cleanup_resources();
+        log_append_current_task("shell: release HDMI main pane for diagdash id=", id);
     }
 
     if (id == gol_get_task_id())
@@ -576,6 +678,10 @@ void shell_execute_command(const char *cmd)
     {
         shell_cmd_help();
     }
+    else if (str_equals(cmd, "diag"))
+    {
+        shell_cmd_diag();
+    }
     else if (str_equals(cmd, "env history"))
     {
         shell_cmd_env_history();
@@ -591,10 +697,6 @@ void shell_execute_command(const char *cmd)
     else if (str_equals(cmd, "heap dump"))
     {
         heap_dump();
-    }
-    else if (str_equals(cmd, "heap stats"))
-    {
-        heap_stats();
     }
     else if (str_equals(cmd, "startable"))
     {

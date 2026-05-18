@@ -3,13 +3,15 @@
 
 #include <stdint.h>
 
-typedef enum {
+typedef enum
+{
     HDMI_PANE_MAIN = 0,
     HDMI_PANE_MENU = 1,
     HDMI_PANE_COUNT
 } hdmi_pane_id_t;
 
-typedef enum {
+typedef enum
+{
     HDMI_PANE_MODE_CONSOLE = 0,
     HDMI_PANE_MODE_APP = 1
 } hdmi_pane_mode_t;
@@ -34,9 +36,12 @@ void hdmi_puts(hdmi_pane_id_t pane_id, const char *s);
 void hdmi_clear_pane(hdmi_pane_id_t pane_id);
 void hdmi_reset_panes(void);
 
+void hdmi_pad_current_line(hdmi_pane_id_t pane_id, uint32_t fg, uint32_t bg, unsigned int used);
+void hdmi_write_line(hdmi_pane_id_t pane_id, uint32_t row, uint32_t fg, uint32_t bg, const char *s);
+void hdmi_clear_lines_from(hdmi_pane_id_t pane_id, uint32_t row, uint32_t fg, uint32_t bg);
+
 void hdmi_show_bootscreen(void);
 int hdmi_present(uint32_t max_cells);
 void hdmi_wait_ms(uint32_t ms);
-
 
 #endif

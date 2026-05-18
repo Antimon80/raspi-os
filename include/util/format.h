@@ -17,6 +17,7 @@ void format_append_string(format_buffer_t *fmt, const char *s);
 void format_append_uint(format_buffer_t *fmt, uint64_t value);
 void format_append_int(format_buffer_t *fmt, int32_t value);
 void format_append_centi(format_buffer_t *fmt, int32_t centi_value);
+void format_append_timestamp(format_buffer_t *fmt, uint64_t tick);
 
 void format_make_prefixed_command(char *out, unsigned int size, const char *prefix, const char *name);
 

@@ -2,6 +2,7 @@
 #include "rpi4/hdmi/hdmi_draw.h"
 #include "rpi4/soc/mmio.h"
 #include "kernel/irq.h"
+#include "util/string.h"
 
 /*
  * HDMI output is implemented via the firmware mailbox property channel.
@@ -1151,6 +1152,76 @@ void hdmi_puts(hdmi_pane_id_t pane_id, const char *s)
     while (s && *s)
     {
         hdmi_putc(pane_id, *s++);
+    }
+}
+
+void hdmi_pad_current_line(hdmi_pane_id_t pane_id, uint32_t fg, uint32_t bg, unsigned int used)
+{
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+    unsigned int width;
+
+    if (!pane || pane->columns == 0u)
+    {
+        return;
+    }
+
+    if (pane->columns <= 1u)
+    {
+        width = 1u;
+    }
+    else
+    {
+        width = pane->columns - 1u;
+    }
+
+    hdmi_set_text_colors(pane_id, fg, bg);
+
+    while (used < width)
+    {
+        hdmi_putc(pane_id, ' ');
+        used++;
+    }
+
+    hdmi_reset_text_colors(pane_id);
+}
+
+void hdmi_write_line(hdmi_pane_id_t pane_id, uint32_t row, uint32_t fg, uint32_t bg, const char *s)
+{
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+    unsigned int used;
+
+    if (!pane || pane->columns == 0u || pane->rows == 0u)
+    {
+        return;
+    }
+
+    if (row >= pane->rows)
+    {
+        return;
+    }
+
+    used = (unsigned int)str_length(s);
+
+    hdmi_set_cursor(pane_id, 0u, row);
+    hdmi_set_text_colors(pane_id, fg, bg);
+    hdmi_puts(pane_id, s);
+
+    hdmi_pad_current_line(pane_id, fg, bg, used);
+}
+
+void hdmi_clear_lines_from(hdmi_pane_id_t pane_id, uint32_t row, uint32_t fg, uint32_t bg)
+{
+    hdmi_pane_t *pane = hdmi_get_pane(pane_id);
+
+    if (!pane)
+    {
+        return;
+    }
+
+    while (row < pane->rows)
+    {
+        hdmi_write_line(pane_id, row, fg, bg, "");
+        row++;
     }
 }
 

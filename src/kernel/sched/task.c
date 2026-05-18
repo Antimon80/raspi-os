@@ -29,6 +29,8 @@ static void task_clear(task_t *task)
     task->sp = 0;
     task->entry = 0;
     task->wakeup_tick = 0;
+    task->runtime_ticks = 0;
+    task->switch_count = 0;
     task->name[0] = '\0';
 }
 
@@ -91,6 +93,11 @@ int task_create(void (*entry)(void), const char *name, uint32_t flag)
             task->flag = flag;
             task->wakeup_tick = 0;
             str_copy(task->name, name, TASK_NAME_LEN);
+
+            for (unsigned int b = 0u; b < TASK_STACK_SIZE; b++)
+            {
+                task->stack[b] = TASK_STACK_PATTERN;
+            }
 
             // compute top of the task stack
             uint64_t *stack_top = (uint64_t *)(task->stack + TASK_STACK_SIZE);
@@ -168,7 +175,7 @@ int task_request_stop(int id)
     trace_record_irq_disabled(TRACE_TASK_STOP, scheduler_current_task_id(), id, 0);
 
     irq_enable();
-    
+
     return 0;
 }
 
@@ -194,4 +201,34 @@ void task_reap_dying(int exclude_id)
             task_clear(task);
         }
     }
+}
+
+unsigned int task_get_stack_used_bytes(int id)
+{
+    task_t *task = task_get(id);
+    unsigned int unused = 0u;
+
+    if (!task || task->state == UNUSED)
+    {
+        return 0u;
+    }
+
+    while (unused < TASK_STACK_SIZE && task->stack[unused] == TASK_STACK_PATTERN)
+    {
+        unused++;
+    }
+
+    return TASK_STACK_SIZE - unused;
+}
+
+unsigned int task_get_stack_free_bytes(int id)
+{
+    unsigned int used = task_get_stack_used_bytes(id);
+
+    if (used >= TASK_STACK_SIZE)
+    {
+        return 0u;
+    }
+
+    return TASK_STACK_SIZE - used;
 }

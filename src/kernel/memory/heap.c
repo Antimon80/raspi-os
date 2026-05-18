@@ -3,7 +3,7 @@
 #include "kernel/io/console.h"
 #include "rpi4/drivers/uart.h"
 
-#define HEAP_SIZE (4 * 1024 * 1024)
+#define HEAP_SIZE (256 * 256)
 #define HEAP_ALIGNMENT 16
 #define HEAP_MAGIC 0xC0FFEE42u
 
@@ -346,34 +346,48 @@ void heap_dump(void)
     console_puts("=================\n");
 }
 
-void heap_stats(void)
+void heap_get_stats(heap_stats_t *stats)
 {
-    heap_block_t *current = heap_head;
+    heap_block_t *current;
 
-    size_t free_bytes = 0;
-    size_t used_bytes = 0;
-    size_t blocks = 0;
+    if (!stats)
+    {
+        return;
+    }
 
+    stats->start = (uintptr_t)heap_start;
+    stats->end = (uintptr_t)heap_end;
+    stats->total_bytes = 0;
+    stats->used_bytes = 0;
+    stats->free_bytes = 0;
+    stats->block_count = 0;
+    stats->used_block_count = 0;
+    stats->free_block_count = 0;
+
+    if (!heap_initialized)
+    {
+        return;
+    }
+
+    stats->total_bytes = (size_t)(heap_end - heap_start);
+
+    current = heap_head;
     while (current)
     {
+        check_block_or_panic(current, "heap: corrupted block in stats");
+
         if (current->free)
         {
-            free_bytes += current->size;
+            stats->free_bytes += current->size;
+            stats->free_block_count++;
         }
         else
         {
-            used_bytes += current->size;
+            stats->used_bytes += current->size;
+            stats->used_block_count++;
         }
 
-        blocks++;
+        stats->block_count++;
         current = current->next;
     }
-
-    console_puts("heap used=");
-    console_put_u64(used_bytes);
-    console_puts(" free=");
-    console_put_u64(free_bytes);
-    console_puts(" blocks=");
-    console_put_u64(blocks);
-    console_puts("\n");
 }

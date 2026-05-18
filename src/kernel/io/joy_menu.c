@@ -92,6 +92,7 @@ static const char *log_entries[] = {
 /* Startable and stoppable task names exposed through the joystick menu. */
 static const char *task_entries[] = {
     "burst",
+    "diagdash",
     "env",
     "envdash",
     "envled",
@@ -106,21 +107,20 @@ static const char *task_entries[] = {
 #define JOY_MENU_LOG_ITEMS ((int)(sizeof(log_entries) / sizeof(log_entries[0])))
 #define JOY_MENU_TASK_ITEMS ((int)(sizeof(task_entries) / sizeof(task_entries[0])))
 
-static unsigned int joy_menu_line_widht(void)
+/*
+ * Write one full menu line to the HDMI menu pane.
+ */
+static void joy_menu_write_line(uint32_t row, uint32_t fg, const char *s)
 {
-    uint32_t columns = hdmi_get_pane_columns(HDMI_PANE_MENU);
+    hdmi_write_line(HDMI_PANE_MENU, row, fg, JOY_MENU_BG, s);
+}
 
-    if (columns == 0u)
-    {
-        return 18u;
-    }
-
-    if (columns <= 1u)
-    {
-        return 1u;
-    }
-
-    return (unsigned int)(columns - 1u);
+/*
+ * Clear all remaining visible menu rows from the given row downwards.
+ */
+static void joy_menu_clear_from(uint32_t row)
+{
+    hdmi_clear_lines_from(HDMI_PANE_MENU, row, JOY_MENU_TEXT, JOY_MENU_BG);
 }
 
 /*
@@ -185,50 +185,6 @@ static void joy_menu_hdmi_puts(uint32_t fg, const char *s)
     hdmi_set_text_colors(HDMI_PANE_MENU, fg, JOY_MENU_BG);
     hdmi_puts(HDMI_PANE_MENU, s);
     hdmi_reset_text_colors(HDMI_PANE_MENU);
-}
-
-/*
- * Fill the rest of the current menu line with background-colored spaces.
- */
-static void joy_menu_pad_line(unsigned int used)
-{
-    hdmi_set_text_colors(HDMI_PANE_MENU, JOY_MENU_TEXT, JOY_MENU_BG);
-    unsigned int width = joy_menu_line_widht();
-
-    while (used < width)
-    {
-        hdmi_putc(HDMI_PANE_MENU, ' ');
-        used++;
-    }
-
-    hdmi_reset_text_colors(HDMI_PANE_MENU);
-}
-
-/*
- * Render one full menu line at the given row.
- */
-static void joy_menu_write_line(uint32_t row, uint32_t fg, const char *s)
-{
-    unsigned int used = (unsigned int)str_length(s);
-
-    hdmi_set_cursor(HDMI_PANE_MENU, 0u, row);
-    hdmi_set_text_colors(HDMI_PANE_MENU, fg, JOY_MENU_BG);
-    hdmi_puts(HDMI_PANE_MENU, s);
-    hdmi_reset_text_colors(HDMI_PANE_MENU);
-
-    joy_menu_pad_line(used);
-}
-
-/*
- * Clear all remaining visible menu rows from the given row downwards.
- */
-static void joy_menu_clear_from(uint32_t row)
-{
-    while (row < 28u)
-    {
-        joy_menu_write_line(row, JOY_MENU_TEXT, "");
-        row++;
-    }
 }
 
 /*
@@ -470,7 +426,7 @@ static void joy_menu_render(void)
         }
 
         used = 2u + (unsigned)str_length(label);
-        joy_menu_pad_line(used);
+        hdmi_pad_current_line(HDMI_PANE_MENU, JOY_MENU_TEXT, JOY_MENU_BG, used);
     }
 
     if (last_visible < count)

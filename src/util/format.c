@@ -139,6 +139,34 @@ void format_append_centi(format_buffer_t *fmt, int32_t centi_value)
     format_append_int(fmt, fraction);
 }
 
+void format_append_timestamp(format_buffer_t *fmt, uint64_t tick)
+{
+    uint64_t seconds = tick / 100u;
+    uint64_t hours = seconds / 3600u;
+    uint64_t minutes = (seconds / 60u) % 60u;
+    uint64_t secs = seconds % 60u;
+
+    if (hours < 10u)
+    {
+        format_append_char(fmt, '0');
+    }
+    format_append_uint(fmt, hours);
+    format_append_char(fmt, ':');
+
+    if (minutes < 10u)
+    {
+        format_append_char(fmt, '0');
+    }
+    format_append_uint(fmt, minutes);
+    format_append_char(fmt, ':');
+
+    if (secs < 10u)
+    {
+        format_append_char(fmt, '0');
+    }
+    format_append_uint(fmt, secs);
+}
+
 /*
  * Build a shell command from a fixed prefix and a name.
  *
