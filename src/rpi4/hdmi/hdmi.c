@@ -60,12 +60,14 @@
 #define BOOT_CARD_EDGE 0x001B2A3Eu
 #define BOOT_GLOW 0x000C3D69u
 
+/* Fixed HDMI pane layout. */
 #define HDMI_MARGIN_X 10u
 #define HDMI_MARGIN_Y 10u
 #define HDMI_PANEL_GAP 10u
 #define HDMI_HEADER_H 42u
 #define HDMI_PADDING_X 20u
-#define HDMI_PADDING_Y 18u
+#define HDMI_CONTENT_PADDING_TOP 18u
+#define HDMI_CONTENT_PADDING_BOTTOM 18u
 #define HDMI_MENU_WIDTH 360u
 
 /*
@@ -83,6 +85,12 @@ typedef struct
     uint8_t dirty;
 } hdmi_cell_t;
 
+/*
+ * Runtime state of one HDMI pane.
+ *
+ * Each pane owns its own frame geometry, text area, cursor state, color state,
+ * ANSI parser state, ownership state and logical/drawn text model.
+ */
 typedef struct
 {
     uint32_t frame_x;
@@ -138,6 +146,9 @@ static hdmi_pane_t panes[HDMI_PANE_COUNT];
 
 static int hdmi_ready = 0;
 
+/*
+ * Return the pane state for a pane ID, or 0 for invalid IDs.
+ */
 static hdmi_pane_t *hdmi_get_pane(hdmi_pane_id_t pane_id)
 {
     if (pane_id < 0 || pane_id >= HDMI_PANE_COUNT)
@@ -161,6 +172,11 @@ static void hdmi_mark_cell_dirty(hdmi_pane_t *pane, uint32_t column, uint32_t ro
     pane->cells[row][column].dirty = 1u;
 }
 
+/*
+ * Mark every visible cell in a pane dirty.
+ *
+ * Used after clears, layout resets or full pane redraws.
+ */
 static void hdmi_mark_pane_dirty(hdmi_pane_t *pane)
 {
     uint32_t row;
@@ -259,6 +275,12 @@ static void hdmi_text_model_clear(hdmi_pane_t *pane, uint32_t fg, uint32_t bg)
     pane->ansi_has_value = 0;
 }
 
+/*
+ * Configure frame and text geometry for one pane.
+ *
+ * The text area is derived from the pane frame and chrome padding. The visible
+ * row and column count is clamped to the fixed logical text-buffer size.
+ */
 static void hdmi_configure_pane(hdmi_pane_t *pane, uint32_t frame_x, uint32_t frame_y, uint32_t frame_w, uint32_t frame_h, const char *title)
 {
     uint32_t calculated_columns;
@@ -275,9 +297,9 @@ static void hdmi_configure_pane(hdmi_pane_t *pane, uint32_t frame_x, uint32_t fr
     pane->frame_h = frame_h;
 
     pane->content_x = frame_x + HDMI_PADDING_X;
-    pane->content_y = frame_y + HDMI_HEADER_H + HDMI_PADDING_Y;
+    pane->content_y = frame_y + HDMI_HEADER_H + HDMI_CONTENT_PADDING_TOP;
     pane->content_w = frame_w - (HDMI_PADDING_X * 2u);
-    pane->content_h = frame_h - HDMI_HEADER_H - (HDMI_PADDING_Y * 2u) - 6u;
+    pane->content_h = frame_h - HDMI_HEADER_H - HDMI_CONTENT_PADDING_TOP - HDMI_CONTENT_PADDING_BOTTOM - 6u;
 
     calculated_columns = pane->content_w / CHAR_ADVANCE_X;
     calculated_rows = pane->content_h / CHAR_ADVANCE_Y;
@@ -562,6 +584,12 @@ static void hdmi_draw_pane_chrome(hdmi_pane_t *pane)
                         pane->title, CONSOLE_FG, CONSOLE_PANEL_ALT, CONSOLE_SHADOW);
 }
 
+/*
+ * Draw the static chrome for all HDMI panes.
+ *
+ * This sets up the split-screen layout, configures pane geometry and draws
+ * the frame, header and status indicator for each pane.
+ */
 static void hdmi_draw_panes_chrome(void)
 {
     uint32_t screen_x = HDMI_MARGIN_X;
@@ -625,6 +653,14 @@ static int mailbox_call(uint8_t channel)
     }
 }
 
+/*
+ * Flush dirty cells for one pane.
+ *
+ * At most max_cells cells are rendered across all panes in one hdmi_present()
+ * call. This keeps HDMI rendering bounded so other cooperative tasks can run.
+ *
+ * Returns 1 if this pane still has dirty cells after the budget was exhausted.
+ */
 static int hdmi_present_pane(hdmi_pane_t *pane, uint32_t *rendered, uint32_t max_cells)
 {
     uint32_t row;
@@ -836,6 +872,12 @@ void hdmi_release_pane(hdmi_pane_id_t pane_id, int task_id)
     irq_enable();
 }
 
+/*
+ * Return whether the pane can currently receive mirrored console output.
+ *
+ * Console output is allowed only while the pane is in console mode and has no
+ * direct task owner.
+ */
 int hdmi_pane_is_console_writable(hdmi_pane_id_t pane_id)
 {
     hdmi_pane_t *pane = hdmi_get_pane(pane_id);
@@ -855,6 +897,12 @@ int hdmi_pane_is_console_writable(hdmi_pane_id_t pane_id)
     return writable;
 }
 
+/*
+ * Set the current operating mode of a pane.
+ *
+ * The mode controls whether the pane behaves as a console target or is used
+ * directly by an application/task.
+ */
 void hdmi_set_pane_mode(hdmi_pane_id_t pane_id, hdmi_pane_mode_t mode)
 {
     hdmi_pane_t *pane = hdmi_get_pane(pane_id);
@@ -869,6 +917,9 @@ void hdmi_set_pane_mode(hdmi_pane_id_t pane_id, hdmi_pane_mode_t mode)
     irq_enable();
 }
 
+/*
+ * Return the current operating mode of a pane.
+ */
 hdmi_pane_mode_t hdmi_get_pane_mode(hdmi_pane_id_t pane_id)
 {
     hdmi_pane_t *pane = hdmi_get_pane(pane_id);

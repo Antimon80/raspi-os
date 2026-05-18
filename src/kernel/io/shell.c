@@ -10,6 +10,7 @@
 #include "kernel/tasks/led_task.h"
 #include "kernel/tasks/env_task.h"
 #include "kernel/tasks/env_status_task.h"
+#include "kernel/tasks/env_dash_task.h"
 #include "kernel/debug/trace.h"
 #include "kernel/timer.h"
 #include "sensehat/led_matrix.h"
@@ -39,6 +40,7 @@ static const startable_task_t startable_tasks[] = {
     {"tictactoe", tictactoe_task},
     {"gol", gol_task},
     {"env", env_task},
+    {"envdash", env_dash_task},
     {"envled", env_status_task}};
 
 /*
@@ -267,6 +269,12 @@ void shell_cmd_start_arg(const char *name)
         return;
     }
 
+    if (str_equals(name, "envdash") && !env_is_running())
+    {
+        console_puts("envdash: env_task is not running\n");
+        log_append_current_task("shell: start envdash denied because env is not running\n", 0);
+    }
+
     id = task_create(entry->entry, entry->name, 0);
 
     if (id < 0)
@@ -294,7 +302,7 @@ void shell_cmd_stop_id(int id)
     if (!task || task->state == UNUSED)
     {
         console_puts("task not found\n");
-        log_append_current_task("shell: sotp failed task not found id=", id);
+        log_append_current_task("shell: stop failed task not found id=", id);
         return;
     }
 
@@ -318,11 +326,10 @@ void shell_cmd_stop_id(int id)
         log_append_current_task("shell: env marked not running id=", id);
     }
 
-    if (id == gol_get_task_id())
+    if (id == env_dash_get_task_id())
     {
-        led_release(id);
-        gol_set_task_id(-1);
-        log_append_current_task("shell: released LED for gol id=", id);
+        env_dash_cleanup_resources();
+        log_append_current_task("shell: released HDMI main pane for envdash id=", id);
     }
 
     if (id == env_status_get_task_id())
@@ -330,6 +337,13 @@ void shell_cmd_stop_id(int id)
         led_release(id);
         env_status_set_task_id(-1);
         log_append_current_task("shell: released LED for envled id=", id);
+    }
+
+    if (id == gol_get_task_id())
+    {
+        led_release(id);
+        gol_set_task_id(-1);
+        log_append_current_task("shell: released LED for gol id=", id);
     }
 
     if (id == ttt_get_task_id())
