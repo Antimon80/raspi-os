@@ -1,0 +1,5 @@
+\section{Evaluation and Limitations}
+
+The implementation demonstrates that the kernel can boot directly on Raspberry Pi4 hardware, initialize its own runtime environment, create and switch between multiple tasks, synchronize access to shared hardware, and expose both serial and visual control interfaces. The built-in tasks validate different parts of the system: worker tasks exercise the scheduler, sensor tasks validate I2C access, LED tasks validate display arbitration, and HDMI dashboards validate framebuffer rendering and pane ownership.
+
+The main limitation is the cooperative scheduler. Since tasks are not preempted by a timer interrupt, every task must voluntarily yield, sleep, or block. A stask that performs a long-running computation without yielding can reduce responsiveness. The system also does not implement user/kernel separation, virtual memory, process isolation, a filesystem, or memory protection. These features are outside the scope of the project, but they define clear directions for future work.

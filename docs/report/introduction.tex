@@ -1,0 +1,5 @@
+\section{Introduction}
+
+The aim of this project was to implement a small bare-metal operating system for the Raspberry Pi4. The system is loaded directly as a kernel image and does not rely on Linux, a standard C runtime, processes, filesystems, or user-space services. Its main purpose is to demonstrate how core operating system mechanisms can be built from scratch on real hardware.
+
+The project focusses on bootstrapping, kernel initialization, cooperative multitasking, context switching, synchronization, hardware drivers, and interactive system control. The resulting system is not intended to be a general-purpose operating system. Instead, it is a compact embedded kernel that can schedule multiple kernel tasks, communicate over UART, render text output to HDMI, access external hardware over I2C, and provide runtime diagnostics.

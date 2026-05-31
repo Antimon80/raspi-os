@@ -1,0 +1,70 @@
+\section{Core Components}
+\subsection{Bootstrapping and Runtime Setup}
+
+Because the system runs bare-metal, there is no operating system loader or standard runtime that prepares the execution environmet. The first project code executed after firmware loading is therefore written in assembly. This code performs the minimum setup required before C code can run safely.
+
+The startup code establishes an initial stack and clears the \texttt{.bss} section. This step is essential because global kernel structures such as task tables, buffers, mutexes, counters, and driver state depend on zero initialization. In a hosted environment this would be handled by the runtime, but in this system it must be done manually.
+
+After the low-level initialization, the assembly code branches to the C kernel entry point. From this point on, initialization proceeds in a structured order. UART is initialized early so that debugging output is available. The kernel then initializes interrupt handling, the timer, memory management, synchronization primitives, hardware drivers, and the task subsystem. Once the initial kernel tasks have been created, the scheduler is started. 
+
+The project also uses assembly for context switching. While the scheduling decision is made in C, switching from one task to another requires saving and restoring CPU register state and replacing the current stack pointer. This cannot be implemented safely in ordinary C code because the stack itself is part of the task context being switched.
+
+\subsection{Task System and Cooperative Scheduler}
+
+Each \textbf{task} is represented by a task control block (TCB). The TCB stores the task ID, current state, stack pointer, entry function, name, runtime counters, wakeup time, and private stack. The task table is statically allocated, which keeps memory usage deterministic and avoids depending on dynamic allocation for basic scheduling.
+
+When a task is created, the kernel prepares its stack manually. A new task has never run before, but the context switch routine expects a stack that looks like a previously saved execution context. Therefore, task creation builds an artificial initial stack frame. The saved return address points to a bootstrap function. When the scheduler selects the task for the first time, the low-level context switch restores this artificial context and returns into the bootstrap function.
+
+The bootstrap function calls the task's entry function. If the entry function returns, the task is marked for termination and control is returned to the scheduler. This design allows the same context switch mechanism to be used both for starting new tasks and resuming existing tasks.
+
+The \textbf{scheduler} is cooperative. A task continues to run until it explicitly yields, sleeps, blocks, or terminates. The scheduler uses task states such as ready, runnning, sleeping, blocked, dying, and unused:
+
+\begin{itemize}
+	\item \textbf{Ready} tasks can be selected for execution.
+	\item \textbf{Sleeping} tasks store a wakeup tick and are made ready again by timer-driven logic once the wakeup time has passed.
+	\item \textbf{Blocked} tasks wait for an event or synchronization primitive. 
+	\item \textbf{Dying} tasks are cleaned up at a scheduler-safe point.
+\end{itemize}
+
+The scheduling policy is simple round-robin. Starting after the currently running task, the scheduler scans the task table for the next ready non-idle task. If no regular task is ready, the \textbf{idle task} is selected. The idle task waits for events and yields again. This keeps the scheduler small and predictable, but it also means that task responsiveness depends on tasks yielding regularly.
+
+\subsection{Synchronization and Shared Hardware Access}
+
+Even with cooperative scheduling, synchronization is required because multiple tasks can acces shared kernel objects and because interrupts may update state asynchronously. The kernel therefore uses short critical sections where interrupts are disabled while sensitive data structures are modified. This is used for operations such as changing task state, waking tasks, updating scheduler data, or manipulating synchronization primitves.
+
+For longer shared-resource protection, the kernel provides \textbf{mutexes}. A mutex records whether it is locked and which task owns it. If another task tries to acquire the mutex while it is already locked, the task is put into a wait queue, marked as blocked, and the scheduler selects another runnable task. When the mutex is released, one waiting task is woken up and can continue later.
+
+The I2C bus is protected by such a mutex. This is necessary because the Sense HAT exposes several devices through the same bus. Sensor reads, joystick access, and LED matrix updates must not interleave their I2C transactions. The project therefore provides a global I2C bus lock. Every higher-level device driver acquires this lock before starting a transaction and releases it afterwards. This serializes bus access and prevents corrupted communication.
+
+A similar ownership principle is used for display output. HDMI output is divides into panes, and tasks can acquire exclusive ownership of a pane before rendering application-specific output. The LED matrix is also treated as a shared hardware resource. Instead of allowing arbitrary concurrent writes, LED output is routed through controlled rendering code so that hardware access remains centralized.
+
+\subsection{Device Drivers and I/O Layer}
+
+The \textbf{UART driver} provides the lowest-level text output and input path. It is initialized early and remains the most reliable interface during development. The shell is built on top of UART input and allows direct control over tasks, logs, traces, and diagnostics.
+
+The \textbf{timer driver} provides the time base for sleeping tasks, uptime measurement, scheduling counters, and periodic diagnostics. It is also used by tasks that update displays or sensors reading at regular intervals.
+
+The \textbf{I2C layer} provides register-level communication with Sense HAT devices. Higher-level drivers use it to read environmental sensors, poll the joystick, and update the LED matrix. Access to the I2C bus is synchronized through the global bus lock, so the individual device drivers do not corrupt each other's transactions.
+
+\textbf{HDMI output} is implemented using a framebuffer allocated through the Raspberry Pi firmware mailbox interface. The kernel implements its own rendering on top of this framebuffer. To support multiple output producers, the framebuffer is divided into logical panes. The main pane is used by applications and dashboards, while the menu pane is used for joystick-controlled system interaction. This allows the system to remain usable form the Sense HAT joystick without overwriting the main application display.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

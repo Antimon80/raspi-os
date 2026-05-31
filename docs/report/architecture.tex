@@ -1,0 +1,15 @@
+\section{System Architecture}
+
+The system follows a small monolithic kernel architecture. All kernel subsystems, drivers, synchronization primitives, and built-in tasks run in the same address space. There is no separation between user mode and kernel mode. This keeps the implementation compact and makes direct hardware access possible, but it also means that memory protection and process isolation are not provided.
+
+The boot flow starts in AArch64 assembly. The startup code prepares the execution environment, sets up the initial stack, clears uninitialized global data, and transfers control to the C kernel entry point. The C kernel then initializes low-level drivers, the timer, interrupt handling, memory management structures, synchronization primitives, the task system, and finally the scheduler.
+
+The kernel is organized around three layers: 
+
+\begin{itemize}
+	\item	The lowest layer contains hardware-specific drivers such as UART, timer, I2C, HDMI framebuffer access, and Sense HAT device support. 
+	\item The middle layer contains kernel mechanisms such as task management, scheduling, mutexes, logging, tracing, and diagnostic accounting.
+	\item The upper layer consists of built-in kernel tasks such as the shell, joystick menu, environmental monitoring, LED animations, games, and dashboards.
+\end{itemize}
+
+This strucutre keeps hardware access separated from application-like kernel tasks. Tasks do not need to manipulate low-level hardware registers directly. Instead, they use driver and kernel interfaces such as console output, HDMI pane rendering, sensor access, task control, or LED matrix rendering.

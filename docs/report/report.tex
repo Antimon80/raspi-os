@@ -1,0 +1,60 @@
+\documentclass[a4paper,parskip]{scrartcl}
+\usepackage[latin1]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{textcomp}																	% für Symbole wie €, Akzente, etc.
+\usepackage[left=2.5cm,right=2.5cm,bottom=2cm,top=2cm,footskip=1cm]{geometry}
+\usepackage{lastpage}
+\usepackage{enumitem}
+\usepackage{setspace}																	% erlaubt die Einstellung des Zeilenabstands
+
+
+\usepackage{lmodern}																	% verwendete Schriftart
+\usepackage[fleqn]{amsmath}					 									% für mathematische Formeln, Formeln werden linksbündig gesetzt
+\usepackage{amssymb}
+\usepackage{sfmath,upgreek} 													% setzt die Formeln serifenlos
+\usepackage{array,tabularx,multirow,dcolumn,diagbox}	%	für Tabellen
+\usepackage{booktabs}
+\usepackage{pifont}
+\usepackage{xcolor}																		% für Symbole aus der Schriftart Zapf Dingbats
+
+
+\usepackage{graphicx}																	% für das Einbinden von Bildern
+\usepackage[font=normalsize,labelfont=bf]{caption} 		% für die Formatierung von Bildunterschriften
+
+\usepackage[backend=bibtex,style=numeric,sorting=none]{biblatex}
+\addbibresource{references.bib}
+
+\RedeclareSectionCommand[beforeskip=0.5ex, afterskip=0.3ex]{section}
+\RedeclareSectionCommand[beforeskip=0.5ex, afterskip=0.2ex]{subsection}
+\RedeclareSectionCommand[beforeskip=0.3ex, afterskip=0.1ex]{subsubsection}
+
+
+\renewcommand{\familydefault}{\sfdefault}			% setzt Text in serifenloser Schrift
+\renewcommand*{\headfont}{\normalfont}				% setzt den Text in der Kopfzeile in der gleichen Schriftart wir im restlichen Dokument
+\setstretch{1.2}															% Zeilenabstand 1.2
+\setlength{\parindent}{0cm}										% verhindert den Einzug beim Abschnittsumbruch
+%\setitemize{leftmargin=*}
+\setlength{\parskip}{6pt}											% setzt den Abstand zwischen zwei Abschnitten auf 6 pt
+
+\pagestyle{plain}
+
+\begin{document}
+	\input{title_page}
+	
+	\pagenumbering{gobble}
+	\tableofcontents
+	\clearpage
+	
+	\pagenumbering{arabic}
+	\setcounter{page}{1}
+	
+	\input{introduction}
+	\input{hardware_software}
+	\input{architecture}
+	\input{core_components}
+	\input{evaluation_limitation}
+	
+	\clearpage
+	\pagenumbering{gobble}
+	\printbibliography
+\end{document}
