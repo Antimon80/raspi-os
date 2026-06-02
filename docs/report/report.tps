@@ -14,11 +14,11 @@ NormalPos.top=41
 NormalPos.right=2396
 NormalPos.bottom=827
 Class=LaTeXView
-Document=references.bib
+Document=introduction.tex
 
 [Frame0_View0,0]
 TopLine=0
-Cursor=736
+Cursor=844
 
 [Frame1]
 Flags=0
@@ -32,11 +32,11 @@ NormalPos.top=41
 NormalPos.right=2396
 NormalPos.bottom=827
 Class=LaTeXView
-Document=evaluation_limitation.tex
+Document=core_components.tex
 
 [Frame1_View0,0]
-TopLine=0
-Cursor=1031
+TopLine=80
+Cursor=8775
 
 [Frame2]
 Flags=0
@@ -50,11 +50,11 @@ NormalPos.top=41
 NormalPos.right=2396
 NormalPos.bottom=827
 Class=LaTeXView
-Document=report.tex
+Document=hardware_software.tex
 
 [Frame2_View0,0]
-TopLine=23
-Cursor=2175
+TopLine=2
+Cursor=1163
 
 [Frame3]
 Flags=0
@@ -68,11 +68,11 @@ NormalPos.top=41
 NormalPos.right=2396
 NormalPos.bottom=827
 Class=LaTeXView
-Document=title_page.tex
+Document=architecture.tex
 
 [Frame3_View0,0]
 TopLine=0
-Cursor=393
+Cursor=2061
 
 [Frame4]
 Flags=0
@@ -85,12 +85,12 @@ NormalPos.left=4
 NormalPos.top=41
 NormalPos.right=2396
 NormalPos.bottom=827
-Class=LaTeXView
-Document=introduction.tex
+Class=BibTeXView
+Document=references.bib
 
 [Frame4_View0,0]
 TopLine=0
-Cursor=844
+Cursor=245
 
 [Frame5]
 Flags=0
@@ -104,11 +104,11 @@ NormalPos.top=41
 NormalPos.right=2396
 NormalPos.bottom=827
 Class=LaTeXView
-Document=hardware_software.tex
+Document=evaluation_limitation.tex
 
 [Frame5_View0,0]
 TopLine=0
-Cursor=1057
+Cursor=465
 
 [Frame6]
 Flags=0
@@ -122,11 +122,11 @@ NormalPos.top=41
 NormalPos.right=2396
 NormalPos.bottom=827
 Class=LaTeXView
-Document=architecture.tex
+Document=report.tex
 
 [Frame6_View0,0]
-TopLine=0
-Cursor=1641
+TopLine=18
+Cursor=581
 
 [Frame7]
 Flags=0
@@ -140,13 +140,13 @@ NormalPos.top=41
 NormalPos.right=2396
 NormalPos.bottom=827
 Class=LaTeXView
-Document=core_components.tex
+Document=title_page.tex
 
 [Frame7_View0,0]
-TopLine=60
-Cursor=5950
+TopLine=0
+Cursor=690
 
 [SessionInfo]
 FrameCount=8
-ActiveFrame=2
+ActiveFrame=6
 

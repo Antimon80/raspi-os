@@ -1,15 +1,10 @@
 \section{System Architecture}
 
-The system follows a small monolithic kernel architecture. All kernel subsystems, drivers, synchronization primitives, and built-in tasks run in the same address space. There is no separation between user mode and kernel mode. This keeps the implementation compact and makes direct hardware access possible, but it also means that memory protection and process isolation are not provided.
-
-The boot flow starts in AArch64 assembly. The startup code prepares the execution environment, sets up the initial stack, clears uninitialized global data, and transfers control to the C kernel entry point. The C kernel then initializes low-level drivers, the timer, interrupt handling, memory management structures, synchronization primitives, the task system, and finally the scheduler.
-
-The kernel is organized around three layers: 
+The system is based on a small monolithic bare-metal kernel, so all code runs in the same privileged address space. It is designed in a layered structure:
 
 \begin{itemize}
-	\item	The lowest layer contains hardware-specific drivers such as UART, timer, I2C, HDMI framebuffer access, and Sense HAT device support. 
-	\item The middle layer contains kernel mechanisms such as task management, scheduling, mutexes, logging, tracing, and diagnostic accounting.
-	\item The upper layer consists of built-in kernel tasks such as the shell, joystick menu, environmental monitoring, LED animations, games, and dashboards.
-\end{itemize}
-
-This strucutre keeps hardware access separated from application-like kernel tasks. Tasks do not need to manipulate low-level hardware registers directly. Instead, they use driver and kernel interfaces such as console output, HDMI pane rendering, sensor access, task control, or LED matrix rendering.
+	\item	At the lowest level, the kernel interacts with the Raspberry Pi4 peripherals through \textbf{memory-mapped I/O (MMIO)}. Peripheral registers are represented as fixed physical adresses derived from the BCM2711 peripheral base addresses\cite{bcm2711peripherals}. Drivers such as UART, GPIO, I2C, the interrupt controller, the timer, and the HDMI mailbox interface read and write these registers through small MMIO helper functions.
+	\item Above the MMIO layer, the kernel provides \textbf{hardware drivers and device abstractions}. UART provides the serial console and shell input. GPIO and the interrupt controller are used for the Sense HAT joystick interrupt. I2C provides communication with the Sense HAT devices, including the LED matrix controller, joystick state registers, and environmental sensors. HDMI output is initialized through the Raspberry Pi firmware mailbox interface, which returns a framebuffer that the kernel renders into directly.
+	\item The middle layer consists of \textbf{kernel mechanisms}: task management, the cooperative scheduler, synchronization primitives, wait queues, logging, tracing, heap management, and diagnostics. The scheduler runs kernel tasks, mutexes protect shared resources, and the diagnostic code observe task state, stack usage, heap usage, and runtime activity.
+	\item The upper layer consists of kernel tasks. \textbf{System tasks} are part of the infrastructure and are created during kernel initialization. They must remain alive because other components depend on them and are therefore protected against explicit stop requests. Examples are the idle task, shell-related infrastructure, joystick handling and LED rendering. \textbf{User-controllable tasks}, such as demo workers, dashboards and games, can be started and stopped through the UART shell or the joystick menu.
+\end{itemize} 

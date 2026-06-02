@@ -1,11 +1,26 @@
 \section{Hardware and Software Environment}
 
-The target platform is a Raspberry Pi4 Model B. The board is based on a Broadcom BCM2711 system-on-chip with a 64-bit ARM Cortex-A72 CPU. For this project, the Raspberry Pi is used without a conventional operating system. The firmware loads the custom kernel image directly from the boot partition, after which all further initialization is performed by the project code itself.
+The target platform is a Raspberry Pi4 Model B. The board is based on a Broadcom BCM2711 system-on-chip with a 64-bit ARM Cortex-A72 CPU. For this project, the Raspberry Pi is used without a conventional operating system. The firmware loads the custom kernel image directly from the boot partition, after which all further initialization is performed by the project code itself. As an extension module, the system uses the Raspberry Pi Sense HAT. This add-on board is connected through the 40-pin GPIO header and provides an 8x8 RGB LED matrix, a five-way joystick, and several environmental and motion sensors. In this project, the relevant Sense HAT components are the joystick, the LED matrix, and the sensors for pressure, humidity, and temperature. These devices are accessed through the Raspberry Pi's I2C controller.
 
-As an extension module, the system uses the Raspberry Pi Sense HAT. This add-on board is connected through the 40-pin GPIO header and provides an 8x8 RGB LED matrix, a five-way joystick, and several environmental and motion sensors. In this project, the relevant Sense HAT components are the joystick, the LED matrix, and the sensors for pressure, humidity, and temperature. These devices are accessed through the Raspberry Pi's I2C controller.
+\begin{figure}[htbp]
+    \centering
 
-UART is used as the primary debugging and control interface. It allows the kernel to print boot messages and expose an interactive shell even when HDMI output is unavailable or currently owned by a specific task. HDMI is used as the main visual output device. The kernel obtains a framebuffer through the Raspberry Pi firmware mailbox interface and implements its own text rendering on top of it.
+    \begin{minipage}{0.45\textwidth}
+        \centering
+        \includegraphics[width=0.80\textwidth]{images/raspi.png}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.45\textwidth}
+        \centering
+        \includegraphics[width=0.80\textwidth]{images/sensehat.png}
+    \end{minipage}
+
+    \caption{Raspberry Pi4 Model B and Raspberry Pi Sense HAT used as the hardware platform. Images adapted from Pi-Shop.ch\cite{pishop}.}
+    \label{fig:hardware}
+\end{figure}
+
+UART is used as the primary debugging and control interface. Access from a development machine requires a USB-to-UART adapter and a serial terminal program such as PuTTY or minicon. HDMI is used as the main visual output device. Any standard HDMI display can be connected using a suitable micro-HDMI to HDMI cable or adapter.
 
 The software is written mainly in C, with architecture-specific AArch64 assembly for early bootstrapping and context switching. The project is built using a Makefile. The build system uses an AArch64 bare-metal cross toolchain and compiles the code in freestanding mode, without the standard C library or startup files. The linker script defines the memory layout of the kernel image, and the final binary is converted into a Raspberry Pi compatible \texttt{kernel8.img}.
 
-The implementation was developed with reference to the tutorial series \textbf{Writing a Bare-Metal Operating System for Raspberry Pi4}. The tutorial provided the initial orientation for the bare-metal boot process, cross-compilation setup, linker configuration, and the general structure of an AArch64 Raspberry Pi kernel\cite{rpi4os}. For hardware-specific register-level programming, the project also relies on the official \textbf{BCM2711 ARM Peripherals} documentation published by Raspberry Pi Ltd\cite{bcm2711peripherals}.
+The implementation was developed with reference to the tutorial series \textit{Writing a Bare-Metal Operating System for Raspberry Pi4}. The tutorial provided the initial orientation for the bare-metal boot process, cross-compilation setup, linker configuration, and the general structure of an AArch64 Raspberry Pi kernel\cite{rpi4os}. For hardware-specific register-level programming, the project also relies on the official \textit{BCM2711 ARM Peripherals} documentation published by Raspberry Pi Ltd\cite{bcm2711peripherals}.
