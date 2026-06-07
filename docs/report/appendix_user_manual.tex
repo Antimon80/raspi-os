@@ -1,0 +1,110 @@
+\clearpage
+\appendix
+
+\section{Appendix - User Manual}
+
+This appendix describes how to operate the bare-metal Raspberry Pi OS after it has been built and booted on the Raspberry Pi 4.
+
+\subsection{System Startup}
+
+The system is built into a Raspberry Pi kernel image named \texttt{kernel8.img}. After copying the image to the Raspberry Pi boot medium together with the required firmware files, the system starts automatically when the Raspberry Pi is powered on.
+
+During boot, the kernel initializes UART, HDMI output, the heap, the scheduler, interrupts, the timer, I2C, and the Sense HAT device. After initialization, the following system tasks are started automatically:
+
+\begin{itemize}
+    \item \texttt{shell}: provides the UART command interface.
+    \item \texttt{hdmi\_console}: mirrors console output to the HDMI main pane when it is not occupied by another task.
+    \item \texttt{joystick}: reads Sense HAT joystick input and controls the HDMI menu.
+    \item \texttt{led}: owns the physical Sense HAT LED matrix and renders submitted LED frames.
+\end{itemize}
+
+Once the message \texttt{"Kernel initialized"} appears, the system is ready for use.
+
+\subsection{Main Control Interfaces}
+
+The system can be controlled in two ways:
+\begin{itemize}
+\item The UART shell: Commands are typed into a serial terminal connected to the Raspberry Pi UART. Pressing ENTER executes a command.The first interface is the UART shell. Commands are typed into a serial terminal connected to the Raspberry Pi UART. Pressing ENTER executes a command.
+\item The Sense HAT joystick menu: The menu is shown on the HDMI menu pane. It allows the user to start and stop tasks, inspect logs, show task information, and execute selected shell commands without typing over UART.
+\end{itemize}
+\subsection{Shell Commands}
+
+The UART shell supports the following commands:
+\begin{itemize}
+    \item \texttt{help}: Prints the list of available shell commands.
+    \item \texttt{ps}: Prints all currently existing tasks with their task ID, state, and name.
+    \item \texttt{startable}: Lists all tasks that can be started manually.
+    \item \texttt{start <name>}: Starts a task by name. For example, \texttt{start gol} starts the Game of Life task.
+    \item \texttt{stop <id|name>}: Requests a task to stop. The argument can either be a numeric task ID or a task name. For example, \texttt{stop gol} or \texttt{stop 5} stops the Game of Life task if it is running.
+    \item \texttt{log <id|name>}: Prints the log entries of the selected task. The argument can either be a numeric task ID or a task name. For example, \texttt{log gol} or \texttt{log 5} prints the log of the Game of Life task if it is running.
+    \item \texttt{log clear <id|name>}: Clears the log entries of the selected task. The argument can either be a numeric task ID or a task name. For example, \texttt{log clear gol} or \texttt{log clear 5} clears the log of the Game of Life task if it is running.
+    \item \texttt{diag}: Prints a diagnostic snapshot containing uptime, CPU busy percentage, heap usage, heap block statistics, task stack usage, and scheduler counters.
+    \item \texttt{heap dump}: Prints the current heap block layout.
+    \item \texttt{trace dump}: Prints scheduler trace events such as context switches, sleeps, wakes, stops, and exits. Reading the trace consumes the current trace buffer.
+    \item \texttt{trace clear}: Clears the scheduler trace buffer.
+    \item \texttt{env}: Prints the latest environment sensor sample. This requires the \texttt{env} task to be running and to have produced at least one valid sample.
+    \item \texttt{env history}: Prints recent environment samples from the history buffer. This also requires the \texttt{env} task to be running.
+    \item \texttt{shutdown}: Performs a controlled kernel shutdown. The system releases display resources, clears the LED matrix, clears HDMI panes, disables interrupts, and parks the CPU.
+
+\end{itemize}
+
+\subsection{Available User Tasks}
+\begin{itemize}
+    \item \texttt{heart}: A simple heartbeat task that periodically logs heartbeat messages.
+    \item \texttt{fast}: A fast demo worker task that performs frequent work and yields often.
+    \item \texttt{slow}: A slower demo worker task that performs longer work sections and yields less often than \texttt{fast}.
+    \item \texttt{burst}: A demo task that periodically creates bursts of log activity and then sleeps.
+    \item \texttt{gol}: Runs Conway's Game of Life on the Sense HAT LED matrix.
+    \item \texttt{tictactoe}: Runs a Tic-Tac-Toe game using the Sense HAT joystick for input and HDMI/LED matrix for output.
+    \item \texttt{env}: Reads environment data from the Sense HAT sensors and maintains a history buffer.
+    \item \texttt{envled}: Displays a compact environment status visualization on the Sense HAT LED matrix based on the latest sensor data from \texttt{env}.
+    \item \texttt{envdash}: Shows a live HDMI environment dashboard with temperature, humidity, pressure, uptime, and a legend explaining the LED matrix colors. This task depends on \texttt{env} for sensor data.
+    \item \texttt{diagdash}: Shows a live HDMI diagnostics dashboard with uptime, CPU load, heap usage, and per-task stack usage.
+\end{itemize}
+
+\subsection{Joystick Menu Operation}
+
+The HDMI screen is split into a main pane and a menu pane. The menu pane is controlled with the Sense HAT joystick:
+\begin{itemize}
+  \item Long CENTER: Opens or closes the menu. Inside a submenu, a long Center press returns to the main menu.
+  \item UP and DOWN: Move the current selection.
+  \item Short CENTER in the main menu: Executes the selected command or opens a submenu.
+  \item Short CENTER in the log menu: Prints the selected task log.
+  \item LEFT in the task menu: Starts the selected task.
+  \item RIGHT in the task menu: Stops the selected task.
+\end{itemize}
+
+The joystick menu exposes common commands such as \texttt{ps}, \texttt{env history}, \texttt{trace dump}, \texttt{shutdown}, log viewing, and task start/stop operations.
+
+\subsection{Tic-Tac-Toe Controls}
+
+When the Tic-Tac-Toe task is running, the joystick is temporarily used by the game instead of the system menu.
+
+In the mode menu, UP and DOWN select between Easy CPU, Hard CPU, and Two Players. CENTER starts the selected mode.
+
+During the game:
+
+\begin{itemize}
+    \item UP, DOWN, LEFT, and RIGHT move the cursor across the board.
+    \item CENTER places the current player's mark.
+    \item X always starts.
+\end{itemize}
+
+After the game ends:
+
+\begin{itemize}
+    \item UP and DOWN select between \emph{Play again}, \emph{Change mode}, and \emph{Exit game}.
+    \item CENTER confirms the selected option.
+\end{itemize}
+
+\subsection{System Shutdown}
+
+Individual tasks should be stopped with the \texttt{stop} command or through the joystick task menu. This allows the kernel to release resources such as the LED matrix or HDMI main pane.
+
+The complete system is ended with:
+
+\begin{verbatim}
+shutdown
+\end{verbatim}
+
+After shutdown, the kernel clears the displays, disables interrupts, and enters a halted wait loop. To restart the system, the Raspberry Pi must be reset or power-cycled.
