@@ -19,7 +19,7 @@ The \textbf{scheduler} is cooperative. A task runs until it explicitly yields, s
 	\item A \texttt{DYING} task is no longer scheduled and is cleaned up by the scheduler at a safe point.
 \end{itemize}
 
-Not all tasks are driven the same was. Some tasks are purely cooperative: they perform, work, sleep for a number of ticks, and then continue. Examples include periodic demo tasks, dashboards, and visualization. Their timing is based on explicit calls to \texttt{task\_sleep()}. 
+Not all tasks are driven the same way. Some tasks are purely cooperative: they perform, work, sleep for a number of ticks, and then continue. Examples include periodic demo tasks, dashboards, and visualization. Their timing is based on explicit calls to \texttt{task\_sleep()}.
 
 Other tasks are interrupt-driven. They normally block and are only made ready when an interrupt indicates that work is available. The joystick task is the clearest example. The GPIO interrupt handler detects the Sense HAT joystick interrupt line, clears the GPIO event, and wakes the joystick task. The task then runs outside interrupt context, reads the joystick state over I2C, converts the hardware state into logical menu events, and dispatches them to the menu code. Sleeping tasks are also connected to interrupt handling. The generic timer interrupt increments the software tick counter and checks all sleeping tasks. If a task's wakeup tick has reached, the timer code changes its state back to \texttt{READY}. The timer interrupt does not preemptively switch tasks but only updates the scheduler-visible state.
 
@@ -44,7 +44,7 @@ A similar ownership principle is used for display output. HDMI output is divides
 
 \subsection{HDMI Rendering}
 
-HDMI output is one of the more complex parts of the project. The kernel requests a framebuffer from the Raspberry Pi firmware through the mailbox property interface. After initialization, rendering is performed directly by writing pixels into this framebuffer. Since the kernel does not use a graphical library or terminal emulator, text output, scrolling, clearing, and application views all have to be implemented manually. 
+HDMI output is one of the more complex parts of the project. The kernel requests a framebuffer from the Raspberry Pi firmware through the mailbox property interface. After initialization, rendering is performed directly by writing pixels into this framebuffer. Since the kernel does not use a graphical library or terminal emulator, text output, scrolling, clearing, and application views all have to be implemented manually.
 
 The final design does not redraw the screen line by line on every update. Instead, HDMI output is modeled as a \textbf{character-cell display with backing state}. Each pane stores the character and color information for its cells. When code writes to a pane, it updates the cell state and marks only the affected cells as dirty. A later presentation step flushes dirty cells by converting their glyphs into framebuffer pixels. The dirty-cell model is important for responsiveness. A full redraw of the HDMI framebuffer is expensive and would let display output dominate CPU time and disturb the cooperative scheduler. Dirty-cell flushing limits the amount of work per update and makes it possible to budget rendering work across scheduler iterations.
 
@@ -55,24 +55,3 @@ The Sense HAT LED matrix is also treated as shared output device. The matrix has
 \subsection{Diagnostics}
 
 Because the system runs without Linux, there are no external tools such as \texttt{top}, \texttt{dmesg}, or a process monitor. The kernel therefore implements its own diagnostics. The shell can print scheduler state, task states, heap usage, stack high-water marks, logs, and trace entries. Since log entries are heap-allocated, heap diagnostics also show whether runtime logging remains bounded. The diagnostics dashboard renders selected runtime data live to the HDMI main pane.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
