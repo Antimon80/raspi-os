@@ -21,6 +21,9 @@
 #define JOY_MENU_MAX_VISIBLE_ITEMS 18u
 #define JOY_MENU_COMMAND_BUFFER_SIZE 64u
 
+#define JOY_MENU_PRESENT_BUDGET 32u
+#define JOY_MENU_PRESENT_PASSES 2u
+
 /* Available menu levels. */
 typedef enum
 {
@@ -347,6 +350,38 @@ static const char *joy_menu_hint_line_2(void)
     return "LONG CENTER: close";
 }
 
+static void joy_menu_present(void)
+{
+    hdmi_pane_t *pane;
+    uint32_t rendered;
+    unsigned int pass;
+    int more_dirty;
+
+    if (!hdmi_is_available())
+    {
+        return;
+    }
+
+    pane = hdmi_get_pane(HDMI_PANE_MENU);
+    if (!pane)
+    {
+        return;
+    }
+
+    for (pass = 0u; pass < JOY_MENU_PRESENT_PASSES; pass++)
+    {
+        rendered = 0u;
+        more_dirty = hdmi_present_pane(pane, &rendered, JOY_MENU_PRESENT_BUDGET);
+
+        if (!more_dirty)
+        {
+            break;
+        }
+
+        scheduler_yield();
+    }
+}
+
 /*
  * Render the complete joystick menu.
  *
@@ -383,7 +418,7 @@ static void joy_menu_render(void)
 
         while (hdmi_present(16u))
         {
-            scheduler_yield();
+            joy_menu_present();
         }
 
         return;
@@ -441,7 +476,7 @@ static void joy_menu_render(void)
 
     while (hdmi_present(16u))
     {
-        scheduler_yield();
+        joy_menu_present();
     }
 }
 

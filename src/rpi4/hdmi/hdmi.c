@@ -41,10 +41,6 @@
 #define SCREEN_DEPTH 32u
 #define PIXEL_ORDER_RGB 1u
 
-/* Maximum size of the logical HDMI text model */
-#define HDMI_MAX_COLUMNS 80u
-#define HDMI_MAX_ROWS 32u
-
 /* Shared color palette for the console chrome, text renderer and bootscreen. */
 #define CONSOLE_BG 0x00101820u
 #define CONSOLE_FG 0x00F2F6F8u
@@ -72,63 +68,6 @@
 #define HDMI_MENU_WIDTH 360u
 
 /*
- * One logical HDMI text cell.
- *
- * The text model stores the desired cell state. drawn_cells stores the last
- * state that was flushed to the framebuffer. The dirty flag marks cells that
- * must be repainted by hdmi_present().
- */
-typedef struct
-{
-    char ch;
-    uint32_t fg;
-    uint32_t bg;
-    uint8_t dirty;
-} hdmi_cell_t;
-
-/*
- * Runtime state of one HDMI pane.
- *
- * Each pane owns its own frame geometry, text area, cursor state, color state,
- * ANSI parser state, ownership state and logical/drawn text model.
- */
-typedef struct
-{
-    uint32_t frame_x;
-    uint32_t frame_y;
-    uint32_t frame_w;
-    uint32_t frame_h;
-
-    uint32_t content_x;
-    uint32_t content_y;
-    uint32_t content_w;
-    uint32_t content_h;
-
-    uint32_t columns;
-    uint32_t rows;
-
-    uint32_t cursor_x;
-    uint32_t cursor_y;
-
-    uint32_t fg;
-    uint32_t bg;
-
-    int cursor_visible;
-
-    int ansi_state;
-    uint32_t ansi_value;
-    int ansi_has_value;
-
-    int owner_task_id;
-    hdmi_pane_mode_t mode;
-
-    const char *title;
-
-    hdmi_cell_t cells[HDMI_MAX_ROWS][HDMI_MAX_COLUMNS];
-    hdmi_cell_t draw[HDMI_MAX_ROWS][HDMI_MAX_COLUMNS];
-} hdmi_pane_t;
-
-/*
  * Mailbox property messages must be 16-byte aligned.
  * The current framebuffer setup uses 35 32-bit words.
  */
@@ -150,7 +89,7 @@ static int hdmi_ready = 0;
 /*
  * Return the pane state for a pane ID, or 0 for invalid IDs.
  */
-static hdmi_pane_t *hdmi_get_pane(hdmi_pane_id_t pane_id)
+hdmi_pane_t *hdmi_get_pane(hdmi_pane_id_t pane_id)
 {
     if (pane_id < 0 || pane_id >= HDMI_PANE_COUNT)
     {
@@ -662,7 +601,7 @@ static int mailbox_call(uint8_t channel)
  *
  * Returns 1 if this pane still has dirty cells after the budget was exhausted.
  */
-static int hdmi_present_pane(hdmi_pane_t *pane, uint32_t *rendered, uint32_t max_cells)
+int hdmi_present_pane(hdmi_pane_t *pane, uint32_t *rendered, uint32_t max_cells)
 {
     uint32_t row;
     uint32_t col;
